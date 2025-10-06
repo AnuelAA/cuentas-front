@@ -1,73 +1,202 @@
-# Welcome to your Lovable project
+# FinanzasApp - Dashboard Financiero Personal
 
-## Project info
+Una aplicación web moderna y profesional para gestionar tus finanzas personales. Controla activos, pasivos, ingresos y gastos desde un dashboard intuitivo con gráficos interactivos.
 
-**URL**: https://lovable.dev/projects/c3330d1f-03d7-4936-b382-9938669a0db9
+## 🚀 Características
 
-## How can I edit this code?
+- **Dashboard Completo**: Visualiza tu situación financiera con gráficos de ingresos y gastos
+- **Gestión de Activos**: Controla inversiones y su rentabilidad
+- **Control de Pasivos**: Monitorea préstamos y deudas con seguimiento de progreso
+- **Transacciones**: Registra y filtra ingresos y gastos por fecha, categoría y tipo
+- **Diseño Responsive**: Interfaz moderna que se adapta a móviles, tablets y escritorio
+- **Tema Financiero**: Paleta de colores profesional tipo fintech
 
-There are several ways of editing your application.
+## 🛠️ Tecnologías
 
-**Use Lovable**
+- **React 18** con TypeScript
+- **Vite** para desarrollo rápido
+- **Tailwind CSS** para estilos
+- **Recharts** para gráficos interactivos
+- **Axios** para llamadas API
+- **Shadcn/ui** para componentes UI
+- **React Router** para navegación
+- **date-fns** para manejo de fechas
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/c3330d1f-03d7-4936-b382-9938669a0db9) and start prompting.
+## 📡 API Backend
 
-Changes made via Lovable will be committed automatically to this repo.
+La aplicación se conecta a la API REST en:
+```
+https://cuentas-springboot.onrender.com/api
+```
 
-**Use your preferred IDE**
+Swagger UI disponible en:
+```
+https://cuentas-springboot.onrender.com/swagger-ui/index.html
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🚦 Inicio Rápido
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Requisitos previos
+- Node.js 18+ 
+- npm o yarn
 
-Follow these steps:
+### Instalación
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+```bash
+# Clonar el repositorio
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Instalar dependencias
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Iniciar servidor de desarrollo
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+La aplicación estará disponible en `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Demo Login
 
-**Use GitHub Codespaces**
+Para probar la aplicación, puedes usar cualquier email y contraseña (el backend está configurado para el usuario ID 1).
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📱 Páginas de la Aplicación
 
-## What technologies are used for this project?
+### 1. Login (`/login`)
+- Autenticación con email y contraseña
+- Diseño moderno con gradientes
 
-This project is built with:
+### 2. Dashboard (`/dashboard`)
+- Resumen financiero: ingresos, gastos y balance neto
+- Gráficos de evolución temporal (líneas y barras)
+- Tarjetas de mejor y peor activo
+- Selector de rango de fechas (por defecto: mes anterior)
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### 3. Activos (`/assets`)
+- Tabla con todos los activos
+- Información: nombre, tipo, valor de adquisición, valor actual, rentabilidad
+- Vista detallada de rendimiento por activo
 
-## How can I deploy this project?
+### 4. Pasivos (`/liabilities`)
+- Listado de pasivos con barras de progreso
+- Detalles: monto total, saldo pendiente, % amortizado
+- Vista de progreso con principal e intereses pagados
 
-Simply open [Lovable](https://lovable.dev/projects/c3330d1f-03d7-4936-b382-9938669a0db9) and click on Share -> Publish.
+### 5. Transacciones (`/transactions`)
+- Tabla de ingresos y gastos separados visualmente
+- Filtros por fecha, tipo y categoría
+- Crear nuevas transacciones
+- Eliminar transacciones existentes
 
-## Can I connect a custom domain to my Lovable project?
+## 🎨 Sistema de Diseño
 
-Yes, you can!
+La aplicación utiliza un sistema de diseño moderno tipo fintech:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- **Colores Primarios**: Azul profundo (#1e40af)
+- **Colores de Éxito**: Verde financiero (#10b981)
+- **Colores de Alerta**: Amarillo/naranja (#f59e0b)
+- **Fondos**: Grises claros con efectos sutiles
+- **Tipografía**: Sistema sans-serif para máxima legibilidad
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Todos los colores están definidos en `src/index.css` usando HSL y son accesibles mediante tokens semánticos en todo el código.
+
+## 🔧 Configuración
+
+### Proxy API
+
+El proyecto está configurado con un proxy en `vite.config.ts` para solucionar problemas de CORS:
+
+```typescript
+proxy: {
+  '/api': {
+    target: 'https://cuentas-springboot.onrender.com',
+    changeOrigin: true,
+    secure: true,
+  }
+}
+```
+
+### Variables de Entorno
+
+No se requieren variables de entorno para funcionar.
+
+## 📦 Scripts Disponibles
+
+```bash
+# Desarrollo
+npm run dev
+
+# Build para producción
+npm run build
+
+# Preview del build
+npm run preview
+
+# Lint
+npm run lint
+```
+
+## 🏗️ Estructura del Proyecto
+
+```
+src/
+├── components/
+│   ├── ui/              # Componentes shadcn/ui
+│   ├── Layout.tsx       # Layout con sidebar
+│   ├── StatCard.tsx     # Tarjeta de estadística
+│   └── ProtectedRoute.tsx
+├── contexts/
+│   └── AuthContext.tsx  # Contexto de autenticación
+├── pages/
+│   ├── Login.tsx
+│   ├── Dashboard.tsx
+│   ├── Assets.tsx
+│   ├── Liabilities.tsx
+│   ├── Transactions.tsx
+│   └── NotFound.tsx
+├── services/
+│   └── api.ts           # Cliente API con Axios
+├── types/
+│   └── api.ts           # Tipos TypeScript
+├── App.tsx              # Componente raíz
+└── main.tsx             # Punto de entrada
+```
+
+## 🔐 Autenticación
+
+La aplicación incluye un sistema de autenticación básico:
+- Los datos de sesión se guardan en `localStorage`
+- Rutas protegidas con componente `ProtectedRoute`
+- Redirección automática a login si no hay sesión
+
+## 📊 Gráficos y Visualización
+
+Utilizamos **Recharts** para crear visualizaciones interactivas:
+- Gráficos de líneas para evolución temporal
+- Gráficos de barras para comparativas
+- Tooltips personalizados con formato de moneda
+- Colores temáticos del sistema de diseño
+
+## 🌐 Despliegue
+
+Para desplegar la aplicación en producción:
+
+```bash
+npm run build
+```
+
+Los archivos generados estarán en la carpeta `dist/` y pueden ser desplegados en cualquier servidor web estático.
+
+### Plataformas recomendadas:
+- Vercel
+- Netlify
+- GitHub Pages
+- Lovable (clic en "Publish")
+
+## 📄 Licencia
+
+Este proyecto fue creado con [Lovable](https://lovable.dev)
+
+---
+
+**URL del Proyecto**: https://lovable.dev/projects/c3330d1f-03d7-4936-b382-9938669a0db9

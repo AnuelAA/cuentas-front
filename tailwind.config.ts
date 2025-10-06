@@ -22,6 +22,17 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          light: "hsl(var(--primary-light))",
+          dark: "hsl(var(--primary-dark))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+          light: "hsl(var(--success-light))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -56,6 +67,12 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+        },
+        chart: {
+          income: "hsl(var(--chart-income))",
+          expense: "hsl(var(--chart-expense))",
+          asset: "hsl(var(--chart-asset))",
+          liability: "hsl(var(--chart-liability))",
         },
       },
       borderRadius: {
