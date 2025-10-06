@@ -140,7 +140,7 @@ const Transactions: React.FC = () => {
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
-    if (filterCategory && transaction.categoryId?.toString() !== filterCategory) return false;
+    if (filterCategory && transaction.categoryId !== parseInt(filterCategory)) return false;
     return true;
   });
 
