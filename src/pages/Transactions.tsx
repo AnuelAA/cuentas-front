@@ -34,7 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Filter } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -49,6 +49,7 @@ const Transactions: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   
   // New transaction form
   const [newTransaction, setNewTransaction] = useState<CreateTransactionRequest>({
@@ -134,15 +135,29 @@ const Transactions: React.FC = () => {
     }).format(value);
   };
 
-  const getCategoryName = (categoryId?: number) => {
+  const getCategoryInfo = (categoryId?: number) => {
     const category = categories.find(c => c.categoryId === categoryId);
-    return category?.name || '-';
+    return category;
+  };
+
+  const getTransactionType = (transaction: Transaction): 'income' | 'expense' => {
+    const category = getCategoryInfo(transaction.categoryId);
+    if (category?.type) return category.type;
+    // Si no hay categoría, clasificamos por el signo del amount
+    return transaction.amount >= 0 ? 'income' : 'expense';
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
     if (filterCategory && filterCategory !== 'all' && transaction.categoryId !== parseInt(filterCategory)) return false;
+    if (filterType !== 'all') {
+      const transactionType = getTransactionType(transaction);
+      if (transactionType !== filterType) return false;
+    }
     return true;
   });
+
+  const incomeTransactions = filteredTransactions.filter((t) => getTransactionType(t) === 'income');
+  const expenseTransactions = filteredTransactions.filter((t) => getTransactionType(t) === 'expense');
 
   if (loading) {
     return (
@@ -224,7 +239,7 @@ const Transactions: React.FC = () => {
                     <SelectContent>
                       {categories.map((category) => (
                         <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
-                          {category.name}
+                          {category.name} ({category.type === 'income' ? 'Ingreso' : 'Gasto'})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -246,7 +261,7 @@ const Transactions: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Fecha Inicio</Label>
                 <Input
@@ -262,6 +277,19 @@ const Transactions: React.FC = () => {
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={filterType} onValueChange={(value: any) => setFilterType(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="income">Ingresos</SelectItem>
+                    <SelectItem value="expense">Gastos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Categoría</Label>
@@ -283,16 +311,15 @@ const Transactions: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Todas las Transacciones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {filteredTransactions.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                No hay transacciones que coincidan con los filtros seleccionados
-              </p>
-            ) : (
+        {(filterType === 'all' || filterType === 'income') && incomeTransactions.length > 0 && (
+          <Card className="border-l-4 border-l-success">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowUpCircle className="h-5 w-5 text-success" />
+                Ingresos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -305,33 +332,94 @@ const Transactions: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTransactions.map((transaction) => (
-                      <TableRow key={transaction.transactionId}>
-                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell className="font-medium">{transaction.description}</TableCell>
-                        <TableCell>{getCategoryName(transaction.categoryId)}</TableCell>
-                        <TableCell className={`text-right font-semibold ${
-                          transaction.amount >= 0 ? 'text-success' : 'text-destructive'
-                        }`}>
-                          {formatCurrency(transaction.amount)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteTransaction(transaction.transactionId)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {incomeTransactions.map((transaction) => {
+                      const category = getCategoryInfo(transaction.categoryId);
+                      return (
+                        <TableRow key={transaction.transactionId}>
+                          <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                          <TableCell className="font-medium">{transaction.description}</TableCell>
+                          <TableCell>{category?.name || '-'}</TableCell>
+                          <TableCell className="text-right text-success font-semibold">
+                            {formatCurrency(Math.abs(transaction.amount))}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteTransaction(transaction.transactionId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {(filterType === 'all' || filterType === 'expense') && expenseTransactions.length > 0 && (
+          <Card className="border-l-4 border-l-destructive">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowDownCircle className="h-5 w-5 text-destructive" />
+                Gastos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenseTransactions.map((transaction) => {
+                      const category = getCategoryInfo(transaction.categoryId);
+                      return (
+                        <TableRow key={transaction.transactionId}>
+                          <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                          <TableCell className="font-medium">{transaction.description}</TableCell>
+                          <TableCell>{category?.name || '-'}</TableCell>
+                          <TableCell className="text-right text-destructive font-semibold">
+                            {formatCurrency(Math.abs(transaction.amount))}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteTransaction(transaction.transactionId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {filteredTransactions.length === 0 && (
+          <Card>
+            <CardContent className="py-12">
+              <p className="text-center text-muted-foreground">
+                No hay transacciones que coincidan con los filtros seleccionados
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Layout>
   );

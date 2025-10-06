@@ -71,6 +71,7 @@ export interface Category {
   userId: number;
   name: string;
   description?: string;
+  type: 'income' | 'expense';
   createdAt?: string;
   updatedAt?: string;
 }

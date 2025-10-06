@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAssets, getAssetPerformance } from '@/services/api';
-import type { Asset, AssetPerformance } from '@/types/api';
+import { getAssets, getAssetPerformance, getTransactions, getCategories } from '@/services/api';
+import type { Asset, AssetPerformance, Transaction, Category } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, Eye } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
@@ -28,7 +29,9 @@ const Assets: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState<AssetPerformance | null>(null);
-  const [selectedAssetName, setSelectedAssetName] = useState<string>('');
+  const [selectedAssetData, setSelectedAssetData] = useState<Asset | null>(null);
+  const [assetTransactions, setAssetTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [startDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
   const [endDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
@@ -48,22 +51,37 @@ const Assets: React.FC = () => {
     }
   };
 
+  const fetchCategories = async () => {
+    if (!user?.userId) return;
+    try {
+      const data = await getCategories(user.userId);
+      setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
   const handleViewDetails = async (asset: Asset) => {
     if (!user?.userId) return;
     
     try {
-      const performance = await getAssetPerformance(user.userId, asset.assetId, startDate, endDate);
+      const [performance, transactions] = await Promise.all([
+        getAssetPerformance(user.userId, asset.assetId, startDate, endDate),
+        getTransactions(user.userId).then(txs => txs.filter(t => t.assetId === asset.assetId))
+      ]);
       setSelectedAsset(performance);
-      setSelectedAssetName(asset.name);
+      setSelectedAssetData(asset);
+      setAssetTransactions(transactions);
       setDialogOpen(true);
     } catch (error) {
-      console.error('Error fetching asset performance:', error);
+      console.error('Error fetching asset details:', error);
       toast.error('Error al cargar los detalles del activo');
     }
   };
 
   useEffect(() => {
     fetchAssets();
+    fetchCategories();
   }, [user]);
 
   const formatCurrency = (value: number) => {
@@ -76,6 +94,10 @@ const Assets: React.FC = () => {
   const calculateROI = (asset: Asset) => {
     if (!asset.acquisitionValue) return 0;
     return ((asset.currentValue - asset.acquisitionValue) / asset.acquisitionValue) * 100;
+  };
+
+  const getCategoryInfo = (categoryId?: number) => {
+    return categories.find(c => c.categoryId === categoryId);
   };
 
   if (loading) {
@@ -167,53 +189,97 @@ const Assets: React.FC = () => {
         </Card>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>Rendimiento del Activo</DialogTitle>
+              <DialogTitle>Detalles del Activo</DialogTitle>
             </DialogHeader>
-            {selectedAsset && (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="text-lg font-semibold">{selectedAssetName}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+            {selectedAsset && selectedAssetData && (
+              <Tabs defaultValue="performance" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="performance">Rendimiento</TabsTrigger>
+                  <TabsTrigger value="transactions">Transacciones</TabsTrigger>
+                </TabsList>
+                <TabsContent value="performance" className="space-y-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Valor Inicial</p>
-                    <p className="text-lg font-semibold">
-                      {formatCurrency(selectedAsset.initialValue)}
-                    </p>
+                    <p className="text-sm text-muted-foreground">Nombre</p>
+                    <p className="text-lg font-semibold">{selectedAssetData.name}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Valor Actual</p>
-                    <p className="text-lg font-semibold">
-                      {formatCurrency(selectedAsset.currentValue)}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Valor Inicial</p>
+                      <p className="text-lg font-semibold">
+                        {formatCurrency(selectedAsset.initialValue)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Valor Actual</p>
+                      <p className="text-lg font-semibold">
+                        {formatCurrency(selectedAsset.currentValue)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Beneficio Absoluto</p>
-                    <p
-                      className={`text-lg font-semibold ${
-                        (selectedAsset.currentValue - selectedAsset.initialValue) >= 0 ? 'text-success' : 'text-destructive'
-                      }`}
-                    >
-                      {formatCurrency(selectedAsset.currentValue - selectedAsset.initialValue)}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Beneficio Absoluto</p>
+                      <p
+                        className={`text-lg font-semibold ${
+                          (selectedAsset.currentValue - selectedAsset.initialValue) >= 0 ? 'text-success' : 'text-destructive'
+                        }`}
+                      >
+                        {formatCurrency(selectedAsset.currentValue - selectedAsset.initialValue)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">ROI</p>
+                      <p
+                        className={`text-lg font-semibold ${
+                          (selectedAsset.roi ?? 0) >= 0 ? 'text-success' : 'text-destructive'
+                        }`}
+                      >
+                        {(selectedAsset.roi ?? 0).toFixed(2)}%
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">ROI</p>
-                    <p
-                      className={`text-lg font-semibold ${
-                        (selectedAsset.roi ?? 0) >= 0 ? 'text-success' : 'text-destructive'
-                      }`}
-                    >
-                      {(selectedAsset.roi ?? 0).toFixed(2)}%
+                </TabsContent>
+                <TabsContent value="transactions">
+                  {assetTransactions.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No hay transacciones asociadas a este activo
                     </p>
-                  </div>
-                </div>
-              </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead>Categoría</TableHead>
+                            <TableHead className="text-right">Cantidad</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assetTransactions.map((transaction) => {
+                            const category = getCategoryInfo(transaction.categoryId);
+                            const isIncome = category?.type === 'income' || transaction.amount >= 0;
+                            return (
+                              <TableRow key={transaction.transactionId}>
+                                <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell>{transaction.description}</TableCell>
+                                <TableCell>{category?.name || '-'}</TableCell>
+                                <TableCell className={`text-right font-semibold ${
+                                  isIncome ? 'text-success' : 'text-destructive'
+                                }`}>
+                                  {formatCurrency(Math.abs(transaction.amount))}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             )}
           </DialogContent>
         </Dialog>

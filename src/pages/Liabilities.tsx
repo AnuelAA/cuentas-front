@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getLiabilities, getLiabilityProgress } from '@/services/api';
-import type { Liability, LiabilityProgress } from '@/types/api';
+import { getLiabilities, getLiabilityProgress, getTransactions, getCategories } from '@/services/api';
+import type { Liability, LiabilityProgress, Transaction, Category } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Eye } from 'lucide-react';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 const Liabilities: React.FC = () => {
@@ -28,7 +30,9 @@ const Liabilities: React.FC = () => {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLiability, setSelectedLiability] = useState<LiabilityProgress | null>(null);
-  const [selectedLiabilityName, setSelectedLiabilityName] = useState<string>('');
+  const [selectedLiabilityData, setSelectedLiabilityData] = useState<Liability | null>(null);
+  const [liabilityTransactions, setLiabilityTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchLiabilities = async () => {
@@ -46,13 +50,27 @@ const Liabilities: React.FC = () => {
     }
   };
 
+  const fetchCategories = async () => {
+    if (!user?.userId) return;
+    try {
+      const data = await getCategories(user.userId);
+      setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
   const handleViewDetails = async (liability: Liability) => {
     if (!user?.userId) return;
     
     try {
-      const progress = await getLiabilityProgress(user.userId, liability.liabilityId);
+      const [progress, transactions] = await Promise.all([
+        getLiabilityProgress(user.userId, liability.liabilityId),
+        getTransactions(user.userId).then(txs => txs.filter(t => t.liabilityId === liability.liabilityId))
+      ]);
       setSelectedLiability(progress);
-      setSelectedLiabilityName(liability.name);
+      setSelectedLiabilityData(liability);
+      setLiabilityTransactions(transactions);
       setDialogOpen(true);
     } catch (error) {
       console.error('Error fetching liability progress:', error);
@@ -62,6 +80,7 @@ const Liabilities: React.FC = () => {
 
   useEffect(() => {
     fetchLiabilities();
+    fetchCategories();
   }, [user]);
 
   const formatCurrency = (value: number) => {
@@ -75,6 +94,10 @@ const Liabilities: React.FC = () => {
     if (!liability.principalAmount) return 0;
     const paid = liability.principalAmount - liability.outstandingBalance;
     return (paid / liability.principalAmount) * 100;
+  };
+
+  const getCategoryInfo = (categoryId?: number) => {
+    return categories.find(c => c.categoryId === categoryId);
   };
 
   if (loading) {
@@ -158,48 +181,92 @@ const Liabilities: React.FC = () => {
         </Card>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>Progreso del Pasivo</DialogTitle>
+              <DialogTitle>Detalles del Pasivo</DialogTitle>
             </DialogHeader>
-            {selectedLiability && (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="text-lg font-semibold">{selectedLiabilityName}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+            {selectedLiability && selectedLiabilityData && (
+              <Tabs defaultValue="progress" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="progress">Progreso</TabsTrigger>
+                  <TabsTrigger value="transactions">Transacciones</TabsTrigger>
+                </TabsList>
+                <TabsContent value="progress" className="space-y-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Principal Pagado</p>
-                    <p className="text-lg font-semibold text-success">
-                      {formatCurrency(selectedLiability.principalPaid)}
-                    </p>
+                    <p className="text-sm text-muted-foreground">Nombre</p>
+                    <p className="text-lg font-semibold">{selectedLiabilityData.name}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Intereses Pagados</p>
-                    <p className="text-lg font-semibold text-warning">
-                      {formatCurrency(selectedLiability.interestPaid)}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Principal Pagado</p>
+                      <p className="text-lg font-semibold text-success">
+                        {formatCurrency(selectedLiability.principalPaid)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Intereses Pagados</p>
+                      <p className="text-lg font-semibold text-warning">
+                        {formatCurrency(selectedLiability.interestPaid)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
-                    <p className="text-lg font-semibold text-destructive">
-                      {formatCurrency(selectedLiability.remainingBalance)}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
+                      <p className="text-lg font-semibold text-destructive">
+                        {formatCurrency(selectedLiability.remainingBalance)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">% Progreso</p>
+                      <p className="text-lg font-semibold text-primary">
+                        {(selectedLiability.progressPercentage ?? 0).toFixed(2)}%
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">% Progreso</p>
-                    <p className="text-lg font-semibold text-primary">
-                      {(selectedLiability.progressPercentage ?? 0).toFixed(2)}%
-                    </p>
+                  <div className="pt-4">
+                    <Progress value={selectedLiability.progressPercentage ?? 0} className="h-3" />
                   </div>
-                </div>
-                <div className="pt-4">
-                  <Progress value={selectedLiability.progressPercentage ?? 0} className="h-3" />
-                </div>
-              </div>
+                </TabsContent>
+                <TabsContent value="transactions">
+                  {liabilityTransactions.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No hay transacciones asociadas a este pasivo
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead>Categoría</TableHead>
+                            <TableHead className="text-right">Cantidad</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {liabilityTransactions.map((transaction) => {
+                            const category = getCategoryInfo(transaction.categoryId);
+                            const isIncome = category?.type === 'income' || transaction.amount >= 0;
+                            return (
+                              <TableRow key={transaction.transactionId}>
+                                <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                <TableCell>{transaction.description}</TableCell>
+                                <TableCell>{category?.name || '-'}</TableCell>
+                                <TableCell className={`text-right font-semibold ${
+                                  isIncome ? 'text-success' : 'text-destructive'
+                                }`}>
+                                  {formatCurrency(Math.abs(transaction.amount))}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             )}
           </DialogContent>
         </Dialog>
