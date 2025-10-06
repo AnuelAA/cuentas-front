@@ -70,6 +70,7 @@ const Liabilities: React.FC = () => {
   };
 
   const calculateProgress = (liability: Liability) => {
+    if (!liability.totalAmount) return 0;
     const paid = liability.totalAmount - liability.remainingBalance;
     return (paid / liability.totalAmount) * 100;
   };
@@ -189,12 +190,12 @@ const Liabilities: React.FC = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">% Amortizado</p>
                     <p className="text-lg font-semibold text-primary">
-                      {selectedLiability.percentageAmortized.toFixed(2)}%
+                      {(selectedLiability.percentageAmortized ?? 0).toFixed(2)}%
                     </p>
                   </div>
                 </div>
                 <div className="pt-4">
-                  <Progress value={selectedLiability.percentageAmortized} className="h-3" />
+                  <Progress value={selectedLiability.percentageAmortized ?? 0} className="h-3" />
                 </div>
               </div>
             )}

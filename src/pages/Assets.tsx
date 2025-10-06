@@ -122,17 +122,17 @@ const Assets: React.FC = () => {
                         <TableCell className="text-right">
                           <span
                             className={
-                              asset.profitability >= 0
+                              (asset.profitability ?? 0) >= 0
                                 ? 'text-success flex items-center justify-end gap-1'
                                 : 'text-destructive flex items-center justify-end gap-1'
                             }
                           >
-                            {asset.profitability >= 0 ? (
+                            {(asset.profitability ?? 0) >= 0 ? (
                               <TrendingUp className="h-4 w-4" />
                             ) : (
                               <TrendingDown className="h-4 w-4" />
                             )}
-                            {asset.profitability.toFixed(2)}%
+                            {(asset.profitability ?? 0).toFixed(2)}%
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
@@ -193,10 +193,10 @@ const Assets: React.FC = () => {
                     <p className="text-sm text-muted-foreground">Rentabilidad</p>
                     <p
                       className={`text-lg font-semibold ${
-                        selectedAsset.profitability >= 0 ? 'text-success' : 'text-destructive'
+                        (selectedAsset.profitability ?? 0) >= 0 ? 'text-success' : 'text-destructive'
                       }`}
                     >
-                      {selectedAsset.profitability.toFixed(2)}%
+                      {(selectedAsset.profitability ?? 0).toFixed(2)}%
                     </p>
                   </div>
                 </div>

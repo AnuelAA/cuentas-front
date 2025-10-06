@@ -205,7 +205,7 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-2">
                   <p className="text-lg font-semibold">{metrics.bestAsset.name}</p>
                   <p className="text-2xl font-bold text-success">
-                    +{metrics.bestAsset.profitability.toFixed(2)}%
+                    +{(metrics.bestAsset.profitability ?? 0).toFixed(2)}%
                   </p>
                 </div>
               </CardContent>
@@ -224,7 +224,7 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-2">
                   <p className="text-lg font-semibold">{metrics.worstAsset.name}</p>
                   <p className="text-2xl font-bold text-destructive">
-                    {metrics.worstAsset.profitability.toFixed(2)}%
+                    {(metrics.worstAsset.profitability ?? 0).toFixed(2)}%
                   </p>
                 </div>
               </CardContent>
