@@ -5,10 +5,8 @@ import {
   createTransaction,
   deleteTransaction,
   getCategories,
-  getAssets,
-  getLiabilities,
 } from '@/services/api';
-import type { Transaction, Category, Asset, Liability, CreateTransactionRequest } from '@/types/api';
+import type { Transaction, Category, CreateTransactionRequest } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,7 +34,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Filter } from 'lucide-react';
+import { Plus, Trash2, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -44,8 +42,6 @@ const Transactions: React.FC = () => {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   
@@ -53,22 +49,20 @@ const Transactions: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   
   // New transaction form
   const [newTransaction, setNewTransaction] = useState<CreateTransactionRequest>({
-    type: 'EXPENSE',
     amount: 0,
     description: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
+    transactionDate: format(new Date(), 'yyyy-MM-dd'),
   });
 
   const fetchTransactions = async () => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     setLoading(true);
     try {
-      const data = await getTransactions(user.id, startDate || undefined, endDate || undefined);
+      const data = await getTransactions(user.userId, startDate || undefined, endDate || undefined);
       setTransactions(data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -79,17 +73,11 @@ const Transactions: React.FC = () => {
   };
 
   const fetchMetadata = async () => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     try {
-      const [categoriesData, assetsData, liabilitiesData] = await Promise.all([
-        getCategories(user.id),
-        getAssets(user.id),
-        getLiabilities(user.id),
-      ]);
+      const categoriesData = await getCategories(user.userId);
       setCategories(categoriesData);
-      setAssets(assetsData);
-      setLiabilities(liabilitiesData);
     } catch (error) {
       console.error('Error fetching metadata:', error);
     }
@@ -106,17 +94,16 @@ const Transactions: React.FC = () => {
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     try {
-      await createTransaction(user.id, newTransaction);
+      await createTransaction(user.userId, newTransaction);
       toast.success('Transacción creada exitosamente');
       setDialogOpen(false);
       setNewTransaction({
-        type: 'EXPENSE',
         amount: 0,
         description: '',
-        date: format(new Date(), 'yyyy-MM-dd'),
+        transactionDate: format(new Date(), 'yyyy-MM-dd'),
       });
       fetchTransactions();
     } catch (error) {
@@ -126,12 +113,12 @@ const Transactions: React.FC = () => {
   };
 
   const handleDeleteTransaction = async (transactionId: number) => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     if (!confirm('¿Estás seguro de que quieres eliminar esta transacción?')) return;
     
     try {
-      await deleteTransaction(user.id, transactionId);
+      await deleteTransaction(user.userId, transactionId);
       toast.success('Transacción eliminada');
       fetchTransactions();
     } catch (error) {
@@ -147,14 +134,15 @@ const Transactions: React.FC = () => {
     }).format(value);
   };
 
+  const getCategoryName = (categoryId?: number) => {
+    const category = categories.find(c => c.categoryId === categoryId);
+    return category?.name || '-';
+  };
+
   const filteredTransactions = transactions.filter((transaction) => {
-    if (filterType !== 'ALL' && transaction.type !== filterType) return false;
-    if (filterCategory && transaction.categoryName !== filterCategory) return false;
+    if (filterCategory && transaction.categoryId?.toString() !== filterCategory) return false;
     return true;
   });
-
-  const incomeTransactions = filteredTransactions.filter((t) => t.type === 'INCOME');
-  const expenseTransactions = filteredTransactions.filter((t) => t.type === 'EXPENSE');
 
   if (loading) {
     return (
@@ -184,23 +172,6 @@ const Transactions: React.FC = () => {
               </DialogHeader>
               <form onSubmit={handleCreateTransaction} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="type">Tipo</Label>
-                  <Select
-                    value={newTransaction.type}
-                    onValueChange={(value: 'INCOME' | 'EXPENSE') =>
-                      setNewTransaction({ ...newTransaction, type: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INCOME">Ingreso</SelectItem>
-                      <SelectItem value="EXPENSE">Gasto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="amount">Cantidad</Label>
                   <Input
                     id="amount"
@@ -225,13 +196,13 @@ const Transactions: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="date">Fecha</Label>
+                  <Label htmlFor="transactionDate">Fecha</Label>
                   <Input
-                    id="date"
+                    id="transactionDate"
                     type="date"
-                    value={newTransaction.date}
+                    value={newTransaction.transactionDate}
                     onChange={(e) =>
-                      setNewTransaction({ ...newTransaction, date: e.target.value })
+                      setNewTransaction({ ...newTransaction, transactionDate: e.target.value })
                     }
                     required
                   />
@@ -251,13 +222,11 @@ const Transactions: React.FC = () => {
                       <SelectValue placeholder="Seleccionar categoría" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories
-                        .filter((c) => c.type === newTransaction.type)
-                        .map((category) => (
-                          <SelectItem key={category.id} value={category.id.toString()}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
+                      {categories.map((category) => (
+                        <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -277,7 +246,7 @@ const Transactions: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Fecha Inicio</Label>
                 <Input
@@ -295,19 +264,6 @@ const Transactions: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select value={filterType} onValueChange={(value: any) => setFilterType(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todos</SelectItem>
-                    <SelectItem value="INCOME">Ingresos</SelectItem>
-                    <SelectItem value="EXPENSE">Gastos</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label>Categoría</Label>
                 <Select value={filterCategory} onValueChange={setFilterCategory}>
                   <SelectTrigger>
@@ -316,7 +272,7 @@ const Transactions: React.FC = () => {
                   <SelectContent>
                     <SelectItem value="">Todas</SelectItem>
                     {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.name}>
+                      <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
                         {category.name}
                       </SelectItem>
                     ))}
@@ -327,109 +283,55 @@ const Transactions: React.FC = () => {
           </CardContent>
         </Card>
 
-        {(filterType === 'ALL' || filterType === 'INCOME') && incomeTransactions.length > 0 && (
-          <Card className="border-l-4 border-l-success">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ArrowUpCircle className="h-5 w-5 text-success" />
-                Ingresos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {incomeTransactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell>{format(new Date(transaction.date), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell className="font-medium">{transaction.description}</TableCell>
-                        <TableCell>{transaction.categoryName || '-'}</TableCell>
-                        <TableCell className="text-right text-success font-semibold">
-                          {formatCurrency(transaction.amount)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteTransaction(transaction.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {(filterType === 'ALL' || filterType === 'EXPENSE') && expenseTransactions.length > 0 && (
-          <Card className="border-l-4 border-l-destructive">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ArrowDownCircle className="h-5 w-5 text-destructive" />
-                Gastos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenseTransactions.map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell>{format(new Date(transaction.date), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell className="font-medium">{transaction.description}</TableCell>
-                        <TableCell>{transaction.categoryName || '-'}</TableCell>
-                        <TableCell className="text-right text-destructive font-semibold">
-                          {formatCurrency(transaction.amount)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteTransaction(transaction.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {filteredTransactions.length === 0 && (
-          <Card>
-            <CardContent className="py-12">
-              <p className="text-center text-muted-foreground">
+        <Card>
+          <CardHeader>
+            <CardTitle>Todas las Transacciones</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {filteredTransactions.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
                 No hay transacciones que coincidan con los filtros seleccionados
               </p>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTransactions.map((transaction) => (
+                      <TableRow key={transaction.transactionId}>
+                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell className="font-medium">{transaction.description}</TableCell>
+                        <TableCell>{getCategoryName(transaction.categoryId)}</TableCell>
+                        <TableCell className={`text-right font-semibold ${
+                          transaction.amount >= 0 ? 'text-success' : 'text-destructive'
+                        }`}>
+                          {formatCurrency(transaction.amount)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteTransaction(transaction.transactionId)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

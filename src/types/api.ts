@@ -1,8 +1,10 @@
 export interface User {
-  id: number;
+  userId: number;
+  name: string;
   email: string;
-  name?: string;
   password?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LoginRequest {
@@ -11,89 +13,82 @@ export interface LoginRequest {
 }
 
 export interface Asset {
-  id: number;
+  assetId: number;
+  userId: number;
+  assetTypeId: number;
   name: string;
-  type: string;
+  description?: string;
+  acquisitionDate?: string;
   acquisitionValue: number;
   currentValue: number;
-  profitability: number;
-  acquisitionDate?: string;
 }
 
 export interface AssetPerformance {
   assetId: number;
-  assetName: string;
-  profitability: number;
-  totalValue: number;
-  investedCapital: number;
-  absoluteProfit: number;
+  initialValue: number;
+  currentValue: number;
+  roi: number;
 }
 
 export interface Liability {
-  id: number;
+  liabilityId: number;
+  userId: number;
+  liabilityTypeId: number;
   name: string;
-  type: string;
-  totalAmount: number;
-  remainingBalance: number;
+  description?: string;
+  principalAmount: number;
   interestRate?: number;
   startDate?: string;
   endDate?: string;
+  outstandingBalance: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LiabilityProgress {
   liabilityId: number;
-  liabilityName: string;
   principalPaid: number;
   interestPaid: number;
   remainingBalance: number;
-  percentageAmortized: number;
+  progressPercentage: number;
 }
 
 export interface Transaction {
-  id: number;
-  type: 'INCOME' | 'EXPENSE';
-  amount: number;
-  description: string;
-  date: string;
+  transactionId: number;
+  userId: number;
   categoryId?: number;
-  categoryName?: string;
   assetId?: number;
-  assetName?: string;
   liabilityId?: number;
-  liabilityName?: string;
+  amount: number;
+  transactionDate: string;
+  description: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Category {
-  id: number;
+  categoryId: number;
+  userId: number;
   name: string;
-  type: 'INCOME' | 'EXPENSE';
   description?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DashboardMetrics {
   totalIncome: number;
   totalExpenses: number;
   netBalance: number;
-  incomeByPeriod?: Record<string, number>;
-  expensesByPeriod?: Record<string, number>;
-  bestAsset?: {
-    id: number;
-    name: string;
-    profitability: number;
-  };
-  worstAsset?: {
-    id: number;
-    name: string;
-    profitability: number;
-  };
+  bestAsset?: Asset;
+  worstAsset?: Asset;
 }
 
 export interface CreateTransactionRequest {
-  type: 'INCOME' | 'EXPENSE';
-  amount: number;
-  description: string;
-  date: string;
+  userId?: number;
   categoryId?: number;
   assetId?: number;
   liabilityId?: number;
+  amount: number;
+  transactionDate: string;
+  description: string;
 }

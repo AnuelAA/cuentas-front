@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { TrendingUp, TrendingDown, Eye } from 'lucide-react';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 
 const Assets: React.FC = () => {
@@ -27,14 +28,17 @@ const Assets: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState<AssetPerformance | null>(null);
+  const [selectedAssetName, setSelectedAssetName] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [startDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
+  const [endDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
 
   const fetchAssets = async () => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     setLoading(true);
     try {
-      const data = await getAssets(user.id);
+      const data = await getAssets(user.userId);
       setAssets(data);
     } catch (error) {
       console.error('Error fetching assets:', error);
@@ -44,12 +48,13 @@ const Assets: React.FC = () => {
     }
   };
 
-  const handleViewDetails = async (assetId: number) => {
-    if (!user?.id) return;
+  const handleViewDetails = async (asset: Asset) => {
+    if (!user?.userId) return;
     
     try {
-      const performance = await getAssetPerformance(user.id, assetId);
+      const performance = await getAssetPerformance(user.userId, asset.assetId, startDate, endDate);
       setSelectedAsset(performance);
+      setSelectedAssetName(asset.name);
       setDialogOpen(true);
     } catch (error) {
       console.error('Error fetching asset performance:', error);
@@ -66,6 +71,11 @@ const Assets: React.FC = () => {
       style: 'currency',
       currency: 'EUR',
     }).format(value);
+  };
+
+  const calculateROI = (asset: Asset) => {
+    if (!asset.acquisitionValue) return 0;
+    return ((asset.currentValue - asset.acquisitionValue) / asset.acquisitionValue) * 100;
   };
 
   if (loading) {
@@ -101,51 +111,54 @@ const Assets: React.FC = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Tipo</TableHead>
+                      <TableHead>Descripción</TableHead>
                       <TableHead className="text-right">Valor Adquisición</TableHead>
                       <TableHead className="text-right">Valor Actual</TableHead>
-                      <TableHead className="text-right">Rentabilidad</TableHead>
+                      <TableHead className="text-right">ROI</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {assets.map((asset) => (
-                      <TableRow key={asset.id}>
-                        <TableCell className="font-medium">{asset.name}</TableCell>
-                        <TableCell>{asset.type}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(asset.acquisitionValue)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(asset.currentValue)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span
-                            className={
-                              (asset.profitability ?? 0) >= 0
-                                ? 'text-success flex items-center justify-end gap-1'
-                                : 'text-destructive flex items-center justify-end gap-1'
-                            }
-                          >
-                            {(asset.profitability ?? 0) >= 0 ? (
-                              <TrendingUp className="h-4 w-4" />
-                            ) : (
-                              <TrendingDown className="h-4 w-4" />
-                            )}
-                            {(asset.profitability ?? 0).toFixed(2)}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewDetails(asset.id)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {assets.map((asset) => {
+                      const roi = calculateROI(asset);
+                      return (
+                        <TableRow key={asset.assetId}>
+                          <TableCell className="font-medium">{asset.name}</TableCell>
+                          <TableCell>{asset.description || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(asset.acquisitionValue)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(asset.currentValue)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span
+                              className={
+                                roi >= 0
+                                  ? 'text-success flex items-center justify-end gap-1'
+                                  : 'text-destructive flex items-center justify-end gap-1'
+                              }
+                            >
+                              {roi >= 0 ? (
+                                <TrendingUp className="h-4 w-4" />
+                              ) : (
+                                <TrendingDown className="h-4 w-4" />
+                              )}
+                              {roi.toFixed(2)}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewDetails(asset)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -162,19 +175,19 @@ const Assets: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="text-lg font-semibold">{selectedAsset.assetName}</p>
+                  <p className="text-lg font-semibold">{selectedAssetName}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Capital Invertido</p>
+                    <p className="text-sm text-muted-foreground">Valor Inicial</p>
                     <p className="text-lg font-semibold">
-                      {formatCurrency(selectedAsset.investedCapital)}
+                      {formatCurrency(selectedAsset.initialValue)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Valor Total</p>
+                    <p className="text-sm text-muted-foreground">Valor Actual</p>
                     <p className="text-lg font-semibold">
-                      {formatCurrency(selectedAsset.totalValue)}
+                      {formatCurrency(selectedAsset.currentValue)}
                     </p>
                   </div>
                 </div>
@@ -183,20 +196,20 @@ const Assets: React.FC = () => {
                     <p className="text-sm text-muted-foreground">Beneficio Absoluto</p>
                     <p
                       className={`text-lg font-semibold ${
-                        selectedAsset.absoluteProfit >= 0 ? 'text-success' : 'text-destructive'
+                        (selectedAsset.currentValue - selectedAsset.initialValue) >= 0 ? 'text-success' : 'text-destructive'
                       }`}
                     >
-                      {formatCurrency(selectedAsset.absoluteProfit)}
+                      {formatCurrency(selectedAsset.currentValue - selectedAsset.initialValue)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Rentabilidad</p>
+                    <p className="text-sm text-muted-foreground">ROI</p>
                     <p
                       className={`text-lg font-semibold ${
-                        (selectedAsset.profitability ?? 0) >= 0 ? 'text-success' : 'text-destructive'
+                        (selectedAsset.roi ?? 0) >= 0 ? 'text-success' : 'text-destructive'
                       }`}
                     >
-                      {(selectedAsset.profitability ?? 0).toFixed(2)}%
+                      {(selectedAsset.roi ?? 0).toFixed(2)}%
                     </p>
                   </div>
                 </div>

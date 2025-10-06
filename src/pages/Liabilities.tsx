@@ -28,14 +28,15 @@ const Liabilities: React.FC = () => {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLiability, setSelectedLiability] = useState<LiabilityProgress | null>(null);
+  const [selectedLiabilityName, setSelectedLiabilityName] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchLiabilities = async () => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     setLoading(true);
     try {
-      const data = await getLiabilities(user.id);
+      const data = await getLiabilities(user.userId);
       setLiabilities(data);
     } catch (error) {
       console.error('Error fetching liabilities:', error);
@@ -45,12 +46,13 @@ const Liabilities: React.FC = () => {
     }
   };
 
-  const handleViewDetails = async (liabilityId: number) => {
-    if (!user?.id) return;
+  const handleViewDetails = async (liability: Liability) => {
+    if (!user?.userId) return;
     
     try {
-      const progress = await getLiabilityProgress(user.id, liabilityId);
+      const progress = await getLiabilityProgress(user.userId, liability.liabilityId);
       setSelectedLiability(progress);
+      setSelectedLiabilityName(liability.name);
       setDialogOpen(true);
     } catch (error) {
       console.error('Error fetching liability progress:', error);
@@ -70,9 +72,9 @@ const Liabilities: React.FC = () => {
   };
 
   const calculateProgress = (liability: Liability) => {
-    if (!liability.totalAmount) return 0;
-    const paid = liability.totalAmount - liability.remainingBalance;
-    return (paid / liability.totalAmount) * 100;
+    if (!liability.principalAmount) return 0;
+    const paid = liability.principalAmount - liability.outstandingBalance;
+    return (paid / liability.principalAmount) * 100;
   };
 
   if (loading) {
@@ -108,8 +110,8 @@ const Liabilities: React.FC = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead className="text-right">Monto Total</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead className="text-right">Monto Principal</TableHead>
                       <TableHead className="text-right">Saldo Pendiente</TableHead>
                       <TableHead>Progreso</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
@@ -119,14 +121,14 @@ const Liabilities: React.FC = () => {
                     {liabilities.map((liability) => {
                       const progress = calculateProgress(liability);
                       return (
-                        <TableRow key={liability.id}>
+                        <TableRow key={liability.liabilityId}>
                           <TableCell className="font-medium">{liability.name}</TableCell>
-                          <TableCell>{liability.type}</TableCell>
+                          <TableCell>{liability.description || '-'}</TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(liability.totalAmount)}
+                            {formatCurrency(liability.principalAmount)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(liability.remainingBalance)}
+                            {formatCurrency(liability.outstandingBalance)}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -140,7 +142,7 @@ const Liabilities: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleViewDetails(liability.id)}
+                              onClick={() => handleViewDetails(liability)}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -164,7 +166,7 @@ const Liabilities: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="text-lg font-semibold">{selectedLiability.liabilityName}</p>
+                  <p className="text-lg font-semibold">{selectedLiabilityName}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -188,14 +190,14 @@ const Liabilities: React.FC = () => {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">% Amortizado</p>
+                    <p className="text-sm text-muted-foreground">% Progreso</p>
                     <p className="text-lg font-semibold text-primary">
-                      {(selectedLiability.percentageAmortized ?? 0).toFixed(2)}%
+                      {(selectedLiability.progressPercentage ?? 0).toFixed(2)}%
                     </p>
                   </div>
                 </div>
                 <div className="pt-4">
-                  <Progress value={selectedLiability.percentageAmortized ?? 0} className="h-3" />
+                  <Progress value={selectedLiability.progressPercentage ?? 0} className="h-3" />
                 </div>
               </div>
             )}

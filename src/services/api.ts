@@ -23,7 +23,7 @@ const api = axios.create({
 export const login = async (credentials: LoginRequest): Promise<User> => {
   // Usuario hardcodeado - en el futuro usar GET /users
   const hardcodedUser: User = {
-    id: 1,
+    userId: 1,
     name: "jose",
     email: "jose@hotmail.com",
     password: "1234"
@@ -62,10 +62,13 @@ export const getAsset = async (userId: number, assetId: number): Promise<Asset> 
 
 export const getAssetPerformance = async (
   userId: number,
-  assetId: number
+  assetId: number,
+  startDate: string,
+  endDate: string
 ): Promise<AssetPerformance> => {
   const response = await api.get<AssetPerformance>(
-    `/users/${userId}/dashboard/assets/${assetId}/performance`
+    `/users/${userId}/dashboard/assets/${assetId}/performance`,
+    { params: { startDate, endDate } }
   );
   return response.data;
 };

@@ -1,26 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDashboard } from '@/services/api';
-import type { DashboardMetrics } from '@/types/api';
+import type { DashboardMetrics, Asset } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Wallet, DollarSign, Calendar } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import { TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 const Dashboard: React.FC = () => {
@@ -31,11 +18,11 @@ const Dashboard: React.FC = () => {
   const [endDate, setEndDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
 
   const fetchDashboard = async () => {
-    if (!user?.id) return;
+    if (!user?.userId) return;
     
     setLoading(true);
     try {
-      const data = await getDashboard(user.id, startDate, endDate);
+      const data = await getDashboard(user.userId, startDate, endDate);
       setMetrics(data);
     } catch (error) {
       console.error('Error fetching dashboard:', error);
@@ -56,14 +43,10 @@ const Dashboard: React.FC = () => {
     }).format(value);
   };
 
-  // Transform period data for charts
-  const chartData = metrics?.incomeByPeriod && metrics?.expensesByPeriod
-    ? Object.keys(metrics.incomeByPeriod).map((period) => ({
-        period,
-        ingresos: metrics.incomeByPeriod?.[period] || 0,
-        gastos: metrics.expensesByPeriod?.[period] || 0,
-      }))
-    : [];
+  const calculateROI = (asset: Asset) => {
+    if (!asset.acquisitionValue) return 0;
+    return ((asset.currentValue - asset.acquisitionValue) / asset.acquisitionValue) * 100;
+  };
 
   if (loading) {
     return (
@@ -124,74 +107,6 @@ const Dashboard: React.FC = () => {
           />
         </div>
 
-        {chartData.length > 0 && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Evolución Temporal</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="period" className="text-xs" />
-                    <YAxis className="text-xs" />
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="ingresos"
-                      stroke="hsl(var(--chart-income))"
-                      strokeWidth={2}
-                      name="Ingresos"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="gastos"
-                      stroke="hsl(var(--chart-expense))"
-                      strokeWidth={2}
-                      name="Gastos"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Comparativa por Período</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="period" className="text-xs" />
-                    <YAxis className="text-xs" />
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                    />
-                    <Legend />
-                    <Bar dataKey="ingresos" fill="hsl(var(--chart-income))" name="Ingresos" />
-                    <Bar dataKey="gastos" fill="hsl(var(--chart-expense))" name="Gastos" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         <div className="grid gap-4 md:grid-cols-2">
           {metrics?.bestAsset && (
             <Card className="border-l-4 border-l-success">
@@ -205,7 +120,7 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-2">
                   <p className="text-lg font-semibold">{metrics.bestAsset.name}</p>
                   <p className="text-2xl font-bold text-success">
-                    +{(metrics.bestAsset.profitability ?? 0).toFixed(2)}%
+                    +{calculateROI(metrics.bestAsset).toFixed(2)}%
                   </p>
                 </div>
               </CardContent>
@@ -224,7 +139,7 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-2">
                   <p className="text-lg font-semibold">{metrics.worstAsset.name}</p>
                   <p className="text-2xl font-bold text-destructive">
-                    {(metrics.worstAsset.profitability ?? 0).toFixed(2)}%
+                    {calculateROI(metrics.worstAsset).toFixed(2)}%
                   </p>
                 </div>
               </CardContent>
