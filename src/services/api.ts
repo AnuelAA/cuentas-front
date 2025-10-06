@@ -12,8 +12,14 @@ import type {
   CreateTransactionRequest,
 } from '@/types/api';
 
+// Cambia la baseURL según el entorno
+const API_BASE_URL =
+  import.meta.env.PROD
+    ? 'https://cuentas-springboot.onrender.com/api'
+    : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
