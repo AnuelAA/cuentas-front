@@ -31,7 +31,7 @@ const Dashboard: React.FC = () => {
   const [endDate, setEndDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
 
   const fetchDashboard = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     setLoading(true);
     try {

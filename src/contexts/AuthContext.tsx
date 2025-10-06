@@ -38,11 +38,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userData = await apiLogin(credentials);
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
-      toast.success('¡Bienvenido!');
+      toast.success(`¡Bienvenido ${userData.name || userData.email}!`);
       navigate('/dashboard');
     } catch (error) {
       console.error('Login error:', error);
-      toast.error('Error al iniciar sesión. Verifica tus credenciales.');
+      toast.error('Usuario o contraseña incorrectos');
       throw error;
     } finally {
       setIsLoading(false);

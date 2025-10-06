@@ -64,7 +64,7 @@ const Transactions: React.FC = () => {
   });
 
   const fetchTransactions = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     setLoading(true);
     try {
@@ -79,7 +79,7 @@ const Transactions: React.FC = () => {
   };
 
   const fetchMetadata = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     try {
       const [categoriesData, assetsData, liabilitiesData] = await Promise.all([
@@ -106,7 +106,7 @@ const Transactions: React.FC = () => {
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user?.id) return;
     
     try {
       await createTransaction(user.id, newTransaction);
@@ -126,7 +126,7 @@ const Transactions: React.FC = () => {
   };
 
   const handleDeleteTransaction = async (transactionId: number) => {
-    if (!user) return;
+    if (!user?.id) return;
     
     if (!confirm('¿Estás seguro de que quieres eliminar esta transacción?')) return;
     

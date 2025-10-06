@@ -31,7 +31,7 @@ const Liabilities: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchLiabilities = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     setLoading(true);
     try {
@@ -46,7 +46,7 @@ const Liabilities: React.FC = () => {
   };
 
   const handleViewDetails = async (liabilityId: number) => {
-    if (!user) return;
+    if (!user?.id) return;
     
     try {
       const progress = await getLiabilityProgress(user.id, liabilityId);

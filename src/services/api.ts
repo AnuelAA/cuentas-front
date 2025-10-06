@@ -21,9 +21,16 @@ const api = axios.create({
 
 // Auth
 export const login = async (credentials: LoginRequest): Promise<User> => {
-  // Simulated login - in real app, you'd have a proper auth endpoint
-  const response = await api.get<User>(`/users/1`);
-  return response.data;
+  const response = await api.get<User[]>('/users');
+  const user = response.data.find(
+    u => u.email === credentials.email && u.password === credentials.password
+  );
+  
+  if (!user) {
+    throw new Error('Usuario o contraseña incorrectos');
+  }
+  
+  return user;
 };
 
 // Dashboard

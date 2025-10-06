@@ -30,7 +30,7 @@ const Assets: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const fetchAssets = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     setLoading(true);
     try {
@@ -45,7 +45,7 @@ const Assets: React.FC = () => {
   };
 
   const handleViewDetails = async (assetId: number) => {
-    if (!user) return;
+    if (!user?.id) return;
     
     try {
       const performance = await getAssetPerformance(user.id, assetId);
