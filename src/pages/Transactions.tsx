@@ -48,7 +48,7 @@ const Transactions: React.FC = () => {
   // Filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
+  const [filterCategory, setFilterCategory] = useState('all');
   
   // New transaction form
   const [newTransaction, setNewTransaction] = useState<CreateTransactionRequest>({
@@ -140,7 +140,7 @@ const Transactions: React.FC = () => {
   };
 
   const filteredTransactions = transactions.filter((transaction) => {
-    if (filterCategory && transaction.categoryId !== parseInt(filterCategory)) return false;
+    if (filterCategory && filterCategory !== 'all' && transaction.categoryId !== parseInt(filterCategory)) return false;
     return true;
   });
 
@@ -270,7 +270,7 @@ const Transactions: React.FC = () => {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.categoryId} value={category.categoryId.toString()}>
                         {category.name}
