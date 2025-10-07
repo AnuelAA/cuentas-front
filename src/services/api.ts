@@ -30,16 +30,13 @@ const api = axios.create({
 
 // Auth
 export const login = async (credentials: LoginRequest): Promise<User> => {
-  // Usuario hardcodeado - en el futuro usar GET /users
-  const hardcodedUser: User = {
-    userId: 1,
-    name: "jose",
-    email: "jose@hotmail.com",
-    password: "1234"
-  };
+  const response = await api.get<User[]>('/users');
+  const users = response.data;
   
-  if (credentials.email === hardcodedUser.email && credentials.password === hardcodedUser.password) {
-    return hardcodedUser;
+  const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
+  
+  if (user) {
+    return user;
   }
   
   throw new Error('Usuario o contraseña incorrectos');
