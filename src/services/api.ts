@@ -10,6 +10,9 @@ import type {
   Category,
   DashboardMetrics,
   CreateTransactionRequest,
+  MonthlyRoi,
+  AssetRoi,
+  DashboardSummary,
 } from '@/types/api';
 
 // Cambia la baseURL según el entorno
@@ -133,6 +136,44 @@ export const deleteTransaction = async (
 // Categories
 export const getCategories = async (userId: number): Promise<Category[]> => {
   const response = await api.get<Category[]>(`/users/${userId}/categories`);
+  return response.data;
+};
+
+// Asset ROI
+export const getAssetMonthlyRoi = async (
+  userId: number,
+  assetId: number,
+  year: number
+): Promise<MonthlyRoi[]> => {
+  const response = await api.get<MonthlyRoi[]>(
+    `/users/${userId}/assets/${assetId}/roi/monthly`,
+    { params: { year } }
+  );
+  return response.data;
+};
+
+export const getAssetRoi = async (
+  userId: number,
+  assetId: number,
+  startDate: string,
+  endDate: string
+): Promise<AssetRoi> => {
+  const response = await api.get<AssetRoi>(
+    `/users/${userId}/assets/${assetId}/roi`,
+    { params: { startDate, endDate } }
+  );
+  return response.data;
+};
+
+// Dashboard Summary
+export const getDashboardSummary = async (
+  userId: number,
+  period: 'year' | 'lastMonth'
+): Promise<DashboardSummary> => {
+  const response = await api.get<DashboardSummary>(
+    `/users/${userId}/dashboard/summary`,
+    { params: { period } }
+  );
   return response.data;
 };
 

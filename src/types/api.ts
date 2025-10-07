@@ -93,3 +93,28 @@ export interface CreateTransactionRequest {
   transactionDate: string;
   description: string;
 }
+
+export interface MonthlyRoi {
+  month: string;
+  income: number;
+  expenses: number;
+  netProfit: number;
+  roiPercentage: number;
+}
+
+export interface AssetRoi {
+  assetId: number;
+  totalIncome: number;
+  totalExpenses: number;
+  netProfit: number;
+  roiPercentage: number;
+}
+
+export interface DashboardSummary {
+  period: 'year' | 'lastMonth';
+  startDate: string;
+  endDate: string;
+  totalIncome: number;
+  totalExpenses: number;
+  netProfit: number;
+}
