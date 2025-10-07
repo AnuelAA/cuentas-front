@@ -142,9 +142,8 @@ const Transactions: React.FC = () => {
 
   const getTransactionType = (transaction: Transaction): 'income' | 'expense' => {
     const category = getCategoryInfo(transaction.categoryId);
-    if (category?.type) return category.type;
-    // Si no hay categoría, clasificamos por el signo del amount
-    return transaction.amount >= 0 ? 'income' : 'expense';
+    // Siempre usar el tipo de la categoría si existe
+    return category?.type || 'expense';
   };
 
   const filteredTransactions = transactions.filter((transaction) => {

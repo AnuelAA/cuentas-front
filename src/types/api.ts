@@ -58,6 +58,7 @@ export interface Transaction {
   userId: number;
   categoryId?: number;
   assetId?: number;
+  relatedAssetId?: number;
   liabilityId?: number;
   amount: number;
   transactionDate: string;

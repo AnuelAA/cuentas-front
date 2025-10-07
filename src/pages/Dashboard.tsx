@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDashboard } from '@/services/api';
-import type { DashboardMetrics, Asset } from '@/types/api';
+import { getDashboard, getDashboardSummary } from '@/services/api';
+import type { DashboardMetrics, DashboardSummary, Asset } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
@@ -13,6 +14,8 @@ import { toast } from 'sonner';
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [yearSummary, setYearSummary] = useState<DashboardSummary | null>(null);
+  const [monthSummary, setMonthSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
@@ -22,8 +25,14 @@ const Dashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const data = await getDashboard(user.userId, startDate, endDate);
-      setMetrics(data);
+      const [metricsData, yearData, monthData] = await Promise.all([
+        getDashboard(user.userId, startDate, endDate),
+        getDashboardSummary(user.userId, 'year'),
+        getDashboardSummary(user.userId, 'lastMonth')
+      ]);
+      setMetrics(metricsData);
+      setYearSummary(yearData);
+      setMonthSummary(monthData);
     } catch (error) {
       console.error('Error fetching dashboard:', error);
       toast.error('Error al cargar el dashboard');
@@ -107,45 +116,149 @@ const Dashboard: React.FC = () => {
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {metrics?.bestAsset && (
-            <Card className="border-l-4 border-l-success">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-success" />
-                  Mejor Activo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="text-lg font-semibold">{metrics.bestAsset.name}</p>
-                  <p className="text-2xl font-bold text-success">
-                    +{calculateROI(metrics.bestAsset).toFixed(2)}%
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        <Tabs defaultValue="period" className="w-full">
+          <TabsList>
+            <TabsTrigger value="period">Resumen del Período</TabsTrigger>
+            <TabsTrigger value="year">Resumen Anual</TabsTrigger>
+            <TabsTrigger value="month">Último Mes</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="period" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {metrics?.bestAsset && (
+                <Card className="border-l-4 border-l-success">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-success" />
+                      Mejor Activo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-lg font-semibold">{metrics.bestAsset.name}</p>
+                      <p className="text-2xl font-bold text-success">
+                        +{calculateROI(metrics.bestAsset).toFixed(2)}%
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-          {metrics?.worstAsset && (
-            <Card className="border-l-4 border-l-destructive">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingDown className="h-5 w-5 text-destructive" />
-                  Peor Activo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="text-lg font-semibold">{metrics.worstAsset.name}</p>
-                  <p className="text-2xl font-bold text-destructive">
-                    {calculateROI(metrics.worstAsset).toFixed(2)}%
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              {metrics?.worstAsset && (
+                <Card className="border-l-4 border-l-destructive">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingDown className="h-5 w-5 text-destructive" />
+                      Peor Activo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-lg font-semibold">{metrics.worstAsset.name}</p>
+                      <p className="text-2xl font-bold text-destructive">
+                        {calculateROI(metrics.worstAsset).toFixed(2)}%
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="year" className="space-y-4">
+            {yearSummary && (
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Período</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(yearSummary.startDate), 'dd/MM/yyyy')} - {format(new Date(yearSummary.endDate), 'dd/MM/yyyy')}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-success">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Ingresos Totales</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-success">
+                      {formatCurrency(yearSummary.totalIncome)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-destructive">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Gastos Totales</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-destructive">
+                      {formatCurrency(yearSummary.totalExpenses)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-primary md:col-span-3">
+                  <CardHeader>
+                    <CardTitle>Beneficio Neto Anual</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className={`text-3xl font-bold ${yearSummary.netProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                      {formatCurrency(yearSummary.netProfit)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="month" className="space-y-4">
+            {monthSummary && (
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Período</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(monthSummary.startDate), 'dd/MM/yyyy')} - {format(new Date(monthSummary.endDate), 'dd/MM/yyyy')}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-success">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Ingresos del Mes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-success">
+                      {formatCurrency(monthSummary.totalIncome)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-destructive">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Gastos del Mes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-destructive">
+                      {formatCurrency(monthSummary.totalExpenses)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-l-4 border-l-primary md:col-span-3">
+                  <CardHeader>
+                    <CardTitle>Beneficio Neto Mensual</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className={`text-3xl font-bold ${monthSummary.netProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                      {formatCurrency(monthSummary.netProfit)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

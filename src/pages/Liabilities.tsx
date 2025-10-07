@@ -133,7 +133,6 @@ const Liabilities: React.FC = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Descripción</TableHead>
                       <TableHead className="text-right">Monto Principal</TableHead>
                       <TableHead className="text-right">Saldo Pendiente</TableHead>
                       <TableHead>Progreso</TableHead>
@@ -146,7 +145,6 @@ const Liabilities: React.FC = () => {
                       return (
                         <TableRow key={liability.liabilityId}>
                           <TableCell className="font-medium">{liability.name}</TableCell>
-                          <TableCell>{liability.description || '-'}</TableCell>
                           <TableCell className="text-right">
                             {formatCurrency(liability.principalAmount)}
                           </TableCell>

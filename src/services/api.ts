@@ -104,10 +104,11 @@ export const getLiabilityProgress = async (
 export const getTransactions = async (
   userId: number,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  relatedAssetId?: number
 ): Promise<Transaction[]> => {
   const response = await api.get<Transaction[]>(`/users/${userId}/transactions`, {
-    params: { startDate, endDate },
+    params: { startDate, endDate, relatedAssetId },
   });
   return response.data;
 };

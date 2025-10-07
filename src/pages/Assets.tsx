@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAssets, getAssetPerformance, getTransactions, getCategories } from '@/services/api';
-import type { Asset, AssetPerformance, Transaction, Category } from '@/types/api';
+import { getAssets, getAssetRoi, getTransactions, getCategories } from '@/services/api';
+import type { Asset, AssetRoi, Transaction, Category } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,13 +28,13 @@ const Assets: React.FC = () => {
   const { user } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedAsset, setSelectedAsset] = useState<AssetPerformance | null>(null);
+  const [selectedAssetRoi, setSelectedAssetRoi] = useState<AssetRoi | null>(null);
   const [selectedAssetData, setSelectedAssetData] = useState<Asset | null>(null);
   const [assetTransactions, setAssetTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [startDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
-  const [endDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
+  const [startDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [endDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
   const fetchAssets = async () => {
     if (!user?.userId) return;
@@ -65,11 +65,11 @@ const Assets: React.FC = () => {
     if (!user?.userId) return;
     
     try {
-      const [performance, transactions] = await Promise.all([
-        getAssetPerformance(user.userId, asset.assetId, startDate, endDate),
-        getTransactions(user.userId).then(txs => txs.filter(t => t.assetId === asset.assetId))
+      const [roi, transactions] = await Promise.all([
+        getAssetRoi(user.userId, asset.assetId, startDate, endDate),
+        getTransactions(user.userId, undefined, undefined, asset.assetId)
       ]);
-      setSelectedAsset(performance);
+      setSelectedAssetRoi(roi);
       setSelectedAssetData(asset);
       setAssetTransactions(transactions);
       setDialogOpen(true);
@@ -133,7 +133,6 @@ const Assets: React.FC = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Descripción</TableHead>
                       <TableHead className="text-right">Valor Adquisición</TableHead>
                       <TableHead className="text-right">Valor Actual</TableHead>
                       <TableHead className="text-right">ROI</TableHead>
@@ -146,7 +145,6 @@ const Assets: React.FC = () => {
                       return (
                         <TableRow key={asset.assetId}>
                           <TableCell className="font-medium">{asset.name}</TableCell>
-                          <TableCell>{asset.description || '-'}</TableCell>
                           <TableCell className="text-right">
                             {formatCurrency(asset.acquisitionValue)}
                           </TableCell>
@@ -193,7 +191,7 @@ const Assets: React.FC = () => {
             <DialogHeader>
               <DialogTitle>Detalles del Activo</DialogTitle>
             </DialogHeader>
-            {selectedAsset && selectedAssetData && (
+            {selectedAssetRoi && selectedAssetData && (
               <Tabs defaultValue="performance" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="performance">Rendimiento</TabsTrigger>
@@ -206,37 +204,37 @@ const Assets: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Valor Inicial</p>
-                      <p className="text-lg font-semibold">
-                        {formatCurrency(selectedAsset.initialValue)}
+                      <p className="text-sm text-muted-foreground">Ingresos Totales</p>
+                      <p className="text-lg font-semibold text-success">
+                        {formatCurrency(selectedAssetRoi.totalIncome)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Valor Actual</p>
-                      <p className="text-lg font-semibold">
-                        {formatCurrency(selectedAsset.currentValue)}
+                      <p className="text-sm text-muted-foreground">Gastos Totales</p>
+                      <p className="text-lg font-semibold text-destructive">
+                        {formatCurrency(selectedAssetRoi.totalExpenses)}
                       </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Beneficio Absoluto</p>
+                      <p className="text-sm text-muted-foreground">Beneficio Neto</p>
                       <p
                         className={`text-lg font-semibold ${
-                          (selectedAsset.currentValue - selectedAsset.initialValue) >= 0 ? 'text-success' : 'text-destructive'
+                          selectedAssetRoi.netProfit >= 0 ? 'text-success' : 'text-destructive'
                         }`}
                       >
-                        {formatCurrency(selectedAsset.currentValue - selectedAsset.initialValue)}
+                        {formatCurrency(selectedAssetRoi.netProfit)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">ROI</p>
+                      <p className="text-sm text-muted-foreground">ROI %</p>
                       <p
                         className={`text-lg font-semibold ${
-                          (selectedAsset.roi ?? 0) >= 0 ? 'text-success' : 'text-destructive'
+                          selectedAssetRoi.roiPercentage >= 0 ? 'text-success' : 'text-destructive'
                         }`}
                       >
-                        {(selectedAsset.roi ?? 0).toFixed(2)}%
+                        {selectedAssetRoi.roiPercentage.toFixed(2)}%
                       </p>
                     </div>
                   </div>
