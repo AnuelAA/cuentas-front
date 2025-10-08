@@ -69,9 +69,15 @@ const Assets: React.FC = () => {
         getAssetRoi(user.userId, asset.assetId, startDate, endDate),
         getTransactions(user.userId, undefined, undefined, asset.assetId)
       ]);
+      
+      // Filtrar solo las transacciones relacionadas con este activo
+      const filteredTransactions = transactions.filter(
+        t => t.relatedAssetId === asset.assetId
+      );
+      
       setSelectedAssetRoi(roi);
       setSelectedAssetData(asset);
-      setAssetTransactions(transactions);
+      setAssetTransactions(filteredTransactions);
       setDialogOpen(true);
     } catch (error) {
       console.error('Error fetching asset details:', error);

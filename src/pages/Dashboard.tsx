@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDashboard, getDashboardSummary } from '@/services/api';
+import { getDashboard, getDashboardSummary, getAssets } from '@/services/api';
 import type { DashboardMetrics, DashboardSummary, Asset } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { TrendingUp, TrendingDown, DollarSign, Calendar, LineChart } from 'lucide-react';
+import { format, subMonths, startOfMonth, endOfMonth, startOfYear } from 'date-fns';
 import { toast } from 'sonner';
+import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [yearSummary, setYearSummary] = useState<DashboardSummary | null>(null);
   const [monthSummary, setMonthSummary] = useState<DashboardSummary | null>(null);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
@@ -25,14 +27,16 @@ const Dashboard: React.FC = () => {
     
     setLoading(true);
     try {
-      const [metricsData, yearData, monthData] = await Promise.all([
+      const [metricsData, yearData, monthData, assetsData] = await Promise.all([
         getDashboard(user.userId, startDate, endDate),
         getDashboardSummary(user.userId, 'year'),
-        getDashboardSummary(user.userId, 'lastMonth')
+        getDashboardSummary(user.userId, 'lastMonth'),
+        getAssets(user.userId)
       ]);
       setMetrics(metricsData);
       setYearSummary(yearData);
       setMonthSummary(monthData);
+      setAssets(assetsData);
     } catch (error) {
       console.error('Error fetching dashboard:', error);
       toast.error('Error al cargar el dashboard');
@@ -56,6 +60,40 @@ const Dashboard: React.FC = () => {
     if (!asset.acquisitionValue) return 0;
     return ((asset.currentValue - asset.acquisitionValue) / asset.acquisitionValue) * 100;
   };
+
+  const generateAssetChartData = () => {
+    // Agrupar activos por tipo
+    const assetsByType = assets.reduce((acc, asset) => {
+      const typeKey = `Tipo ${asset.assetTypeId}`;
+      if (!acc[typeKey]) {
+        acc[typeKey] = [];
+      }
+      acc[typeKey].push(asset);
+      return acc;
+    }, {} as Record<string, Asset[]>);
+
+    // Generar datos para los últimos 12 meses
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = subMonths(new Date(), i);
+      const monthKey = format(date, 'MMM yyyy');
+      
+      const monthData: any = { month: monthKey };
+      
+      // Para cada tipo de activo, sumar el valor actual
+      // (En una implementación real, necesitarías valores históricos)
+      Object.entries(assetsByType).forEach(([type, typeAssets]) => {
+        monthData[type] = typeAssets.reduce((sum, asset) => sum + asset.currentValue, 0);
+      });
+      
+      months.push(monthData);
+    }
+    
+    return { months, types: Object.keys(assetsByType) };
+  };
+
+  const chartData = generateAssetChartData();
+  const colors = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
   if (loading) {
     return (
@@ -121,6 +159,7 @@ const Dashboard: React.FC = () => {
             <TabsTrigger value="period">Resumen del Período</TabsTrigger>
             <TabsTrigger value="year">Resumen Anual</TabsTrigger>
             <TabsTrigger value="month">Último Mes</TabsTrigger>
+            <TabsTrigger value="chart">Evolución de Activos</TabsTrigger>
           </TabsList>
           
           <TabsContent value="period" className="space-y-4">
@@ -257,6 +296,55 @@ const Dashboard: React.FC = () => {
                 </Card>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="chart" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LineChart className="h-5 w-5" />
+                  Evolución de Activos por Tipo
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLineChart data={chartData.months}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="month" 
+                        className="text-sm"
+                        tick={{ fill: 'hsl(var(--foreground))' }}
+                      />
+                      <YAxis 
+                        className="text-sm"
+                        tick={{ fill: 'hsl(var(--foreground))' }}
+                        tickFormatter={(value) => formatCurrency(value)}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--background))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '6px'
+                        }}
+                        formatter={(value: any) => formatCurrency(value)}
+                      />
+                      <Legend />
+                      {chartData.types.map((type, index) => (
+                        <Line
+                          key={type}
+                          type="monotone"
+                          dataKey={type}
+                          stroke={colors[index % colors.length]}
+                          strokeWidth={2}
+                          dot={{ fill: colors[index % colors.length] }}
+                        />
+                      ))}
+                    </RechartsLineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
