@@ -15,11 +15,8 @@ import type {
   DashboardSummary,
 } from '@/types/api';
 
-// Cambia la baseURL según el entorno
-const API_BASE_URL =
-  import.meta.env.PROD
-    ? 'https://cuentas-springboot.onrender.com/api'
-    : '/api';
+// Usa el proxy configurado en vite.config.ts para evitar problemas CORS
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
