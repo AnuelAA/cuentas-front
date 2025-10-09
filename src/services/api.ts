@@ -27,8 +27,26 @@ const api = axios.create({
 
 // Auth
 export const login = async (credentials: LoginRequest): Promise<User> => {
-  const response = await api.get<User[]>('/users');
-  const users = response.data;
+  const response = await api.get('/users');
+  console.log('API Response:', response.data);
+  
+  // Maneja diferentes formatos de respuesta
+  let users: User[] = [];
+  if (Array.isArray(response.data)) {
+    users = response.data;
+  } else if (response.data && typeof response.data === 'object') {
+    // Si la respuesta es un objeto, busca la propiedad que contiene los usuarios
+    const possibleArrays = Object.values(response.data).filter(Array.isArray);
+    if (possibleArrays.length > 0) {
+      users = possibleArrays[0] as User[];
+    }
+  }
+  
+  console.log('Users found:', users);
+  
+  if (users.length === 0) {
+    throw new Error('No se pudieron cargar los usuarios');
+  }
   
   const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
   
