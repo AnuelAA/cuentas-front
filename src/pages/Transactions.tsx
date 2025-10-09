@@ -64,6 +64,7 @@ const Transactions: React.FC = () => {
     setLoading(true);
     try {
       const data = await getTransactions(user.userId, startDate || undefined, endDate || undefined);
+      console.log('Transactions loaded:', data);
       setTransactions(data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -78,6 +79,7 @@ const Transactions: React.FC = () => {
     
     try {
       const categoriesData = await getCategories(user.userId);
+      console.log('Categories loaded:', categoriesData);
       setCategories(categoriesData);
     } catch (error) {
       console.error('Error fetching metadata:', error);
@@ -142,6 +144,11 @@ const Transactions: React.FC = () => {
 
   const getTransactionType = (transaction: Transaction): 'income' | 'expense' => {
     const category = getCategoryInfo(transaction.categoryId);
+    console.log(`Transaction ${transaction.transactionId}:`, {
+      categoryId: transaction.categoryId,
+      category: category,
+      type: category?.type || 'expense'
+    });
     // Siempre usar el tipo de la categoría si existe
     return category?.type || 'expense';
   };
