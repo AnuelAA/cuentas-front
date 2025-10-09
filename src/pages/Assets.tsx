@@ -33,8 +33,6 @@ const Assets: React.FC = () => {
   const [assetTransactions, setAssetTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [startDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [endDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
   const fetchAssets = async () => {
     if (!user?.userId) return;
@@ -65,10 +63,18 @@ const Assets: React.FC = () => {
     if (!user?.userId) return;
     
     try {
+      // Obtener todas las transacciones y ROI del activo sin límite de fechas
+      // Usamos fechas muy amplias para obtener todo el historial
+      const startDate = '2000-01-01';
+      const endDate = '2099-12-31';
+      
       const [roi, transactions] = await Promise.all([
         getAssetRoi(user.userId, asset.assetId, startDate, endDate),
         getTransactions(user.userId, startDate, endDate, asset.assetId)
       ]);
+      
+      console.log('Asset ROI:', roi);
+      console.log('Asset Transactions:', transactions);
       
       setSelectedAssetRoi(roi);
       setSelectedAssetData(asset);
