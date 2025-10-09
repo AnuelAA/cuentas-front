@@ -252,35 +252,98 @@ const Assets: React.FC = () => {
                       No hay transacciones asociadas a este activo
                     </p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Descripción</TableHead>
-                            <TableHead>Categoría</TableHead>
-                            <TableHead className="text-right">Cantidad</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {assetTransactions.map((transaction) => {
-                            const category = getCategoryInfo(transaction.categoryId);
-                            const isIncome = category?.type === 'income' || transaction.amount >= 0;
-                            return (
-                              <TableRow key={transaction.transactionId}>
-                                <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                                <TableCell>{transaction.description}</TableCell>
-                                <TableCell>{category?.name || '-'}</TableCell>
-                                <TableCell className={`text-right font-semibold ${
-                                  isIncome ? 'text-success' : 'text-destructive'
-                                }`}>
-                                  {formatCurrency(Math.abs(transaction.amount))}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
+                    <div className="space-y-6">
+                      {/* Ingresos */}
+                      <div>
+                        <h3 className="text-lg font-semibold mb-3 text-success">Ingresos</h3>
+                        {assetTransactions.filter(t => {
+                          const category = getCategoryInfo(t.categoryId);
+                          return category?.type === 'income';
+                        }).length === 0 ? (
+                          <p className="text-center text-muted-foreground py-4 text-sm">
+                            No hay ingresos registrados
+                          </p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Descripción</TableHead>
+                                  <TableHead>Categoría</TableHead>
+                                  <TableHead className="text-right">Cantidad</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {assetTransactions
+                                  .filter(t => {
+                                    const category = getCategoryInfo(t.categoryId);
+                                    return category?.type === 'income';
+                                  })
+                                  .map((transaction) => {
+                                    const category = getCategoryInfo(transaction.categoryId);
+                                    return (
+                                      <TableRow key={transaction.transactionId}>
+                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{transaction.description}</TableCell>
+                                        <TableCell>{category?.name || '-'}</TableCell>
+                                        <TableCell className="text-right font-semibold text-success">
+                                          {formatCurrency(Math.abs(transaction.amount))}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Gastos */}
+                      <div>
+                        <h3 className="text-lg font-semibold mb-3 text-destructive">Gastos</h3>
+                        {assetTransactions.filter(t => {
+                          const category = getCategoryInfo(t.categoryId);
+                          return category?.type === 'expense';
+                        }).length === 0 ? (
+                          <p className="text-center text-muted-foreground py-4 text-sm">
+                            No hay gastos registrados
+                          </p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Descripción</TableHead>
+                                  <TableHead>Categoría</TableHead>
+                                  <TableHead className="text-right">Cantidad</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {assetTransactions
+                                  .filter(t => {
+                                    const category = getCategoryInfo(t.categoryId);
+                                    return category?.type === 'expense';
+                                  })
+                                  .map((transaction) => {
+                                    const category = getCategoryInfo(transaction.categoryId);
+                                    return (
+                                      <TableRow key={transaction.transactionId}>
+                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{transaction.description}</TableCell>
+                                        <TableCell>{category?.name || '-'}</TableCell>
+                                        <TableCell className="text-right font-semibold text-destructive">
+                                          {formatCurrency(Math.abs(transaction.amount))}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </TabsContent>
