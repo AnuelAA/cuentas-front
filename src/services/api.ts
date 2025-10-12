@@ -27,34 +27,51 @@ const api = axios.create({
 
 // Auth
 export const login = async (credentials: LoginRequest): Promise<User> => {
-  const response = await api.get('/users');
-  console.log('API Response:', response.data);
-  
-  // Maneja diferentes formatos de respuesta
-  let users: User[] = [];
-  if (Array.isArray(response.data)) {
-    users = response.data;
-  } else if (response.data && typeof response.data === 'object') {
-    // Si la respuesta es un objeto, busca la propiedad que contiene los usuarios
-    const possibleArrays = Object.values(response.data).filter(Array.isArray);
-    if (possibleArrays.length > 0) {
-      users = possibleArrays[0] as User[];
+  try {
+    const response = await api.get('/users');
+    console.log('Full API Response:', response);
+    console.log('Response data type:', typeof response.data);
+    console.log('Response data:', JSON.stringify(response.data, null, 2));
+    
+    // Maneja diferentes formatos de respuesta
+    let users: User[] = [];
+    if (Array.isArray(response.data)) {
+      users = response.data;
+    } else if (response.data && typeof response.data === 'object') {
+      // Si la respuesta es un objeto, busca la propiedad que contiene los usuarios
+      console.log('Response data keys:', Object.keys(response.data));
+      const possibleArrays = Object.values(response.data).filter(Array.isArray);
+      console.log('Possible arrays found:', possibleArrays);
+      if (possibleArrays.length > 0) {
+        users = possibleArrays[0] as User[];
+      }
     }
+    
+    console.log('Users found:', users);
+    
+    if (users.length === 0) {
+      throw new Error('No se pudieron cargar los usuarios. Verifica que la API esté devolviendo datos correctamente.');
+    }
+    
+    const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
+    
+    if (user) {
+      return user;
+    }
+    
+    throw new Error('Usuario o contraseña incorrectos');
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('Axios error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+      throw new Error(`Error de conexión con la API: ${error.message}`);
+    }
+    throw error;
   }
-  
-  console.log('Users found:', users);
-  
-  if (users.length === 0) {
-    throw new Error('No se pudieron cargar los usuarios');
-  }
-  
-  const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
-  
-  if (user) {
-    return user;
-  }
-  
-  throw new Error('Usuario o contraseña incorrectos');
 };
 
 // Dashboard
