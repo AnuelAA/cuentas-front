@@ -15,24 +15,27 @@ import type {
   DashboardSummary,
 } from '@/types/api';
 
-// Usa el proxy configurado en vite.config.ts para evitar problemas CORS
-const API_BASE_URL = '/api';
+// URL base fija al backend; permite override con VITE_API_URL si se define
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'https://cuentas-springboot.onrender.com/api') as string;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000,
+  // withCredentials: true, // descomenta si tu backend usa cookies de sesión
 });
 
 // Auth
 export const login = async (credentials: LoginRequest): Promise<User> => {
   try {
     const response = await api.get('/users');
+    // Logs útiles para depuración
     console.log('Full API Response:', response);
     console.log('Response data type:', typeof response.data);
     console.log('Response data:', JSON.stringify(response.data, null, 2));
-    
+
     // Maneja diferentes formatos de respuesta
     let users: User[] = [];
     if (Array.isArray(response.data)) {
@@ -46,19 +49,19 @@ export const login = async (credentials: LoginRequest): Promise<User> => {
         users = possibleArrays[0] as User[];
       }
     }
-    
+
     console.log('Users found:', users);
-    
+
     if (users.length === 0) {
       throw new Error('No se pudieron cargar los usuarios. Verifica que la API esté devolviendo datos correctamente.');
     }
-    
+
     const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
-    
+
     if (user) {
       return user;
     }
-    
+
     throw new Error('Usuario o contraseña incorrectos');
   } catch (error) {
     if (axios.isAxiosError(error)) {

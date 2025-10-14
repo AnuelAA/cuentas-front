@@ -21,6 +21,17 @@ export const StatCard: React.FC<StatCardProps> = ({
   trend,
   className,
 }) => {
+  const formatNumberNoDecimals = (n: number) =>
+    new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
+
+  let displayValue = String(value);
+
+  if (typeof value === 'number') {
+    displayValue = formatNumberNoDecimals(value);
+  } else {
+    displayValue = displayValue.replace(/([.,]\d{1,2})(?=\s*€|$)/, '');
+  }
+
   return (
     <Card className={cn('transition-shadow hover:shadow-md', className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -30,7 +41,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-sm sm:text-2xl font-bold min-w-0 text-right overflow-visible leading-none">{displayValue}</div>
         {trend && (
           <p className={cn(
             'text-xs mt-1',
