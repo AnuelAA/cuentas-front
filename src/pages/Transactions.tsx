@@ -35,22 +35,27 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Filter } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 
 const Transactions: React.FC = () => {
   const { user } = useAuth();
+
+  // valores por defecto: primer y último día del mes actual
+  const defaultStartDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const defaultEndDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  
-  // Filters
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  // Filters (por defecto al mes actual)
+  const [startDate, setStartDate] = useState(defaultStartDate);
+  const [endDate, setEndDate] = useState(defaultEndDate);
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
-  
+
   // New transaction form
   const [newTransaction, setNewTransaction] = useState<CreateTransactionRequest>({
     amount: 0,
@@ -142,16 +147,15 @@ const Transactions: React.FC = () => {
     return category;
   };
 
-  const getTransactionType = (transaction: Transaction): 'income' | 'expense' => {
-    const category = getCategoryInfo(transaction.categoryId);
-    console.log(`Transaction ${transaction.transactionId}:`, {
-      categoryId: transaction.categoryId,
-      category: category,
-      type: category?.type || 'expense'
-    });
-    // Siempre usar el tipo de la categoría si existe
-    return category?.type || 'expense';
-  };
+    const getTransactionType = (transaction: Transaction): 'income' | 'expense' => {
+      // Preferir el campo `type` que ahora envía el backend
+      const t = String(transaction.type ?? '').toLowerCase();
+      if (t === 'income' || t === 'expense') return t as 'income' | 'expense';
+
+      // Si no viene, hacer fallback al tipo de la categoría (comportamiento previo)
+      const category = getCategoryInfo(transaction.categoryId);
+      return category?.type === 'income' ? 'income' : 'expense';
+    };
 
   const filteredTransactions = transactions.filter((transaction) => {
     if (filterCategory && filterCategory !== 'all' && transaction.categoryId !== parseInt(filterCategory)) return false;

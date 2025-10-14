@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Eye } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { toast } from 'sonner';
 
 const Liabilities: React.FC = () => {
@@ -35,9 +35,36 @@ const Liabilities: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Helper: obtener último snapshot de liabilityValues por valuationDate
+  const getLatestLiabilitySnapshot = (liability: Liability) => {
+    if (!Array.isArray(liability.liabilityValues) || liability.liabilityValues.length === 0) {
+      return {
+        outstandingBalance: Number(liability.outstandingBalance ?? 0),
+        valuationDate: null as Date | null,
+        endDate: null as Date | null
+      };
+    }
+    const sorted = [...liability.liabilityValues]
+      .map(v => ({ ...v, _date: parseISO(v.valuationDate) }))
+      .filter(v => isValid(v._date))
+      .sort((a, b) => b._date.getTime() - a._date.getTime());
+    if (sorted.length === 0) {
+      return {
+        outstandingBalance: Number(liability.outstandingBalance ?? 0),
+        valuationDate: null,
+        endDate: null
+      };
+    }
+    const latest = sorted[0];
+    return {
+      outstandingBalance: Number(latest.outstandingBalance ?? liability.outstandingBalance ?? 0),
+      valuationDate: latest._date,
+      endDate: latest.endDate ? (isValid(parseISO(latest.endDate)) ? parseISO(latest.endDate) : null) : null
+    };
+  };
+
   const fetchLiabilities = async () => {
     if (!user?.userId) return;
-    
     setLoading(true);
     try {
       const data = await getLiabilities(user.userId);
@@ -62,23 +89,19 @@ const Liabilities: React.FC = () => {
 
   const handleViewDetails = async (liability: Liability) => {
     if (!user?.userId) return;
-    
+
     try {
-      // Obtener todas las transacciones del pasivo sin límite de fechas
       const startDate = '2000-01-01';
       const endDate = '2099-12-31';
-      
+
       const [progress, allTransactions] = await Promise.all([
         getLiabilityProgress(user.userId, liability.liabilityId),
         getTransactions(user.userId, startDate, endDate)
       ]);
-      
+
       // Filtrar transacciones asociadas a este pasivo
       const transactions = allTransactions.filter(t => t.liabilityId === liability.liabilityId);
-      
-      console.log('Liability Progress:', progress);
-      console.log('Liability Transactions:', transactions);
-      
+
       setSelectedLiability(progress);
       setSelectedLiabilityData(liability);
       setLiabilityTransactions(transactions);
@@ -98,13 +121,16 @@ const Liabilities: React.FC = () => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
       currency: 'EUR',
-    }).format(value);
+    }).format(Number(value || 0));
   };
 
+  // Calcular progreso usando outstandingBalance del último snapshot
   const calculateProgress = (liability: Liability) => {
-    if (!liability.principalAmount) return 0;
-    const paid = liability.principalAmount - liability.outstandingBalance;
-    return (paid / liability.principalAmount) * 100;
+    const principal = Number(liability.principalAmount ?? 0);
+    if (!principal) return 0;
+    const { outstandingBalance } = getLatestLiabilitySnapshot(liability);
+    const paid = principal - outstandingBalance;
+    return (paid / principal) * 100;
   };
 
   const getCategoryInfo = (categoryId?: number) => {
@@ -135,47 +161,42 @@ const Liabilities: React.FC = () => {
           </CardHeader>
           <CardContent>
             {liabilities.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                No hay pasivos registrados
-              </p>
+              <p className="text-center text-muted-foreground py-8">No hay pasivos registrados</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead className="text-right">Monto Principal</TableHead>
-                      <TableHead className="text-right">Saldo Pendiente</TableHead>
-                      <TableHead>Progreso</TableHead>
+                      <TableHead className="text-right">Principal</TableHead>
+                      <TableHead className="text-right">Saldo actual</TableHead>
+                      <TableHead className="text-right">Fin del snapshot</TableHead>
+                      <TableHead className="text-center">Progreso</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {liabilities.map((liability) => {
-                      const progress = calculateProgress(liability);
+                    {liabilities.map(l => {
+                      const snapshot = getLatestLiabilitySnapshot(l);
+                      const progress = calculateProgress(l);
                       return (
-                        <TableRow key={liability.liabilityId}>
-                          <TableCell className="font-medium">{liability.name}</TableCell>
+                        <TableRow key={l.liabilityId}>
+                          <TableCell className="font-medium">{l.name}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(Number(l.principalAmount ?? 0))}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(snapshot.outstandingBalance)}</TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(liability.principalAmount)}
+                            {snapshot.valuationDate ? format(snapshot.valuationDate, 'dd/MM/yyyy') : snapshot.endDate ? format(snapshot.endDate, 'dd/MM/yyyy') : '—'}
                           </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(liability.outstandingBalance)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Progress value={progress} className="flex-1" />
-                              <span className="text-sm text-muted-foreground min-w-[3rem] text-right">
-                                {progress.toFixed(0)}%
-                              </span>
+                          <TableCell className="text-center" style={{ minWidth: 180 }}>
+                            <div className="flex items-center gap-3">
+                              <div className="w-full">
+                                <Progress value={Math.max(0, Math.min(100, progress))} />
+                              </div>
+                              <div className="w-16 text-right">{progress.toFixed(1)}%</div>
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewDetails(liability)}
-                            >
+                            <Button variant="ghost" size="sm" onClick={() => handleViewDetails(l)}>
                               <Eye className="h-4 w-4" />
                             </Button>
                           </TableCell>

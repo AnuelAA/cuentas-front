@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, Eye } from 'lucide-react';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 
 const Assets: React.FC = () => {
@@ -34,9 +34,36 @@ const Assets: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Obtiene el assetValue más reciente (valor + fecha)
+  const getLatestAssetValue = (asset: Asset): { value: number; date: Date | null } => {
+    if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
+      return { value: Number(asset.currentValue ?? 0), date: asset.currentValue ? new Date() : null };
+    }
+    const sorted = [...asset.assetValues]
+      .map(av => ({ ...av, _date: parseISO(av.valuationDate) }))
+      .filter(av => isValid(av._date))
+      .sort((a, b) => b._date.getTime() - a._date.getTime());
+    if (sorted.length === 0) return { value: Number(asset.currentValue ?? 0), date: null };
+    return { value: Number(sorted[0].currentValue ?? 0), date: sorted[0]._date };
+  };
+
+  // Busca el valor correspondiente al mes/año de referencia (elige el último <= fin de ese mes)
+  const getValueForMonth = (asset: Asset, refDate: Date): number | null => {
+    if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) return null;
+    const targetEnd = endOfMonth(refDate).getTime();
+    const candidates = asset.assetValues
+      .map(av => ({ ...av, _date: parseISO(av.valuationDate) }))
+      .filter(av => isValid(av._date) && av._date.getTime() <= targetEnd)
+      .sort((a, b) => b._date.getTime() - a._date.getTime());
+    if (candidates.length === 0) return null;
+    // Preferir uno dentro del mismo mes/año, si existe
+    const sameMonth = candidates.find(c => c._date.getMonth() === refDate.getMonth() && c._date.getFullYear() === refDate.getFullYear());
+    const chosen = sameMonth ?? candidates[0];
+    return Number(chosen.currentValue ?? 0);
+  };
+
   const fetchAssets = async () => {
     if (!user?.userId) return;
-    
     setLoading(true);
     try {
       const data = await getAssets(user.userId);
@@ -61,21 +88,13 @@ const Assets: React.FC = () => {
 
   const handleViewDetails = async (asset: Asset) => {
     if (!user?.userId) return;
-    
     try {
-      // Obtener todas las transacciones y ROI del activo sin límite de fechas
-      // Usamos fechas muy amplias para obtener todo el historial
       const startDate = '2000-01-01';
       const endDate = '2099-12-31';
-      
       const [roi, transactions] = await Promise.all([
         getAssetRoi(user.userId, asset.assetId, startDate, endDate),
         getTransactions(user.userId, startDate, endDate, asset.assetId)
       ]);
-      
-      console.log('Asset ROI:', roi);
-      console.log('Asset Transactions:', transactions);
-      
       setSelectedAssetRoi(roi);
       setSelectedAssetData(asset);
       setAssetTransactions(transactions);
@@ -95,12 +114,15 @@ const Assets: React.FC = () => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
       currency: 'EUR',
-    }).format(value);
+    }).format(Number(value || 0));
   };
 
+  // ROI usa el latest currentValue existente
   const calculateROI = (asset: Asset) => {
-    if (!asset.acquisitionValue) return 0;
-    return ((asset.currentValue - asset.acquisitionValue) / asset.acquisitionValue) * 100;
+    const { value: current } = getLatestAssetValue(asset);
+    const acquisition = Number(asset.acquisitionValue ?? 0);
+    if (!acquisition) return 0;
+    return ((current - acquisition) / acquisition) * 100;
   };
 
   const getCategoryInfo = (categoryId?: number) => {
@@ -143,12 +165,28 @@ const Assets: React.FC = () => {
                       <TableHead className="text-right">Valor Adquisición</TableHead>
                       <TableHead className="text-right">Valor Actual</TableHead>
                       <TableHead className="text-right">ROI</TableHead>
+                      <TableHead className="text-right">Rentabilidad anual</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {assets.map((asset) => {
+                      const { value: currentValue, date: latestDate } = getLatestAssetValue(asset);
                       const roi = calculateROI(asset);
+
+                      // referencia para "este mes" = fecha del latest assetValue si existe, sino ahora
+                      const refDate = latestDate ?? new Date();
+                      const lastYearRef = subYears(refDate, 1);
+                      const lastYearValue = getValueForMonth(asset, lastYearRef);
+
+                      // calcular % anual
+                      let annualPct: number | null = null;
+                      if (lastYearValue != null && lastYearValue !== 0) {
+                        annualPct = ((currentValue - lastYearValue) / lastYearValue) * 100;
+                      } else {
+                        annualPct = null; // no disponible o división por cero
+                      }
+
                       return (
                         <TableRow key={asset.assetId}>
                           <TableCell className="font-medium">{asset.name}</TableCell>
@@ -156,7 +194,7 @@ const Assets: React.FC = () => {
                             {formatCurrency(asset.acquisitionValue)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(asset.currentValue)}
+                            {formatCurrency(currentValue)}
                           </TableCell>
                           <TableCell className="text-right">
                             <span
@@ -174,6 +212,25 @@ const Assets: React.FC = () => {
                               {roi.toFixed(2)}%
                             </span>
                           </TableCell>
+
+                          {/* Nueva columna: Rentabilidad anual */}
+                          <TableCell className="text-right">
+                            {annualPct == null ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <span
+                                className={
+                                  annualPct >= 0
+                                    ? 'text-success flex items-center justify-end gap-1'
+                                    : 'text-destructive flex items-center justify-end gap-1'
+                                }
+                              >
+                                {annualPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                                {annualPct.toFixed(2)}%
+                              </span>
+                            )}
+                          </TableCell>
+
                           <TableCell className="text-center">
                             <Button
                               variant="ghost"
@@ -256,93 +313,65 @@ const Assets: React.FC = () => {
                       {/* Ingresos */}
                       <div>
                         <h3 className="text-lg font-semibold mb-3 text-success">Ingresos</h3>
-                        {assetTransactions.filter(t => {
-                          const category = getCategoryInfo(t.categoryId);
-                          return category?.type === 'income';
-                        }).length === 0 ? (
-                          <p className="text-center text-muted-foreground py-4 text-sm">
-                            No hay ingresos registrados
-                          </p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Descripción</TableHead>
-                                  <TableHead>Categoría</TableHead>
-                                  <TableHead className="text-right">Cantidad</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {assetTransactions
-                                  .filter(t => {
-                                    const category = getCategoryInfo(t.categoryId);
-                                    return category?.type === 'income';
-                                  })
-                                  .map((transaction) => {
-                                    const category = getCategoryInfo(transaction.categoryId);
-                                    return (
-                                      <TableRow key={transaction.transactionId}>
-                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{transaction.description}</TableCell>
-                                        <TableCell>{category?.name || '-'}</TableCell>
-                                        <TableCell className="text-right font-semibold text-success">
-                                          {formatCurrency(Math.abs(transaction.amount))}
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Categoría</TableHead>
+                                <TableHead>Descripción</TableHead>
+                                <TableHead className="text-right">Importe</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {assetTransactions
+                                .filter(t => String(t.type ?? '').toLowerCase() === 'income')
+                                .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+                                .map(tx => (
+                                  <TableRow key={tx.transactionId}>
+                                    <TableCell>{format(parseISO(tx.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                    <TableCell>{getCategoryInfo(tx.categoryId)?.name ?? '—'}</TableCell>
+                                    <TableCell className="max-w-xs truncate">{tx.description ?? '—'}</TableCell>
+                                    <TableCell className="text-right">
+                                      <span className="text-success">{formatCurrency(Math.abs(Number(tx.amount || 0)))}</span>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
 
                       {/* Gastos */}
                       <div>
                         <h3 className="text-lg font-semibold mb-3 text-destructive">Gastos</h3>
-                        {assetTransactions.filter(t => {
-                          const category = getCategoryInfo(t.categoryId);
-                          return category?.type === 'expense';
-                        }).length === 0 ? (
-                          <p className="text-center text-muted-foreground py-4 text-sm">
-                            No hay gastos registrados
-                          </p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Descripción</TableHead>
-                                  <TableHead>Categoría</TableHead>
-                                  <TableHead className="text-right">Cantidad</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {assetTransactions
-                                  .filter(t => {
-                                    const category = getCategoryInfo(t.categoryId);
-                                    return category?.type === 'expense';
-                                  })
-                                  .map((transaction) => {
-                                    const category = getCategoryInfo(transaction.categoryId);
-                                    return (
-                                      <TableRow key={transaction.transactionId}>
-                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{transaction.description}</TableCell>
-                                        <TableCell>{category?.name || '-'}</TableCell>
-                                        <TableCell className="text-right font-semibold text-destructive">
-                                          {formatCurrency(Math.abs(transaction.amount))}
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Categoría</TableHead>
+                                <TableHead>Descripción</TableHead>
+                                <TableHead className="text-right">Importe</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {assetTransactions
+                                .filter(t => String(t.type ?? '').toLowerCase() === 'expense')
+                                .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+                                .map(tx => (
+                                  <TableRow key={tx.transactionId}>
+                                    <TableCell>{format(parseISO(tx.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                    <TableCell>{getCategoryInfo(tx.categoryId)?.name ?? '—'}</TableCell>
+                                    <TableCell className="max-w-xs truncate">{tx.description ?? '—'}</TableCell>
+                                    <TableCell className="text-right">
+                                      <span className="text-destructive">-{formatCurrency(Math.abs(Number(tx.amount || 0)))}</span>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
                     </div>
                   )}
