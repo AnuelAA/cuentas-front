@@ -75,7 +75,7 @@ const Dashboard: React.FC = () => {
     setEndDate(format(today, 'yyyy-MM-dd'));
   };
   const setAllTime = () => {
-    setStartDate('2000-01-01');
+    setStartDate('2021-11-01');
     setEndDate(format(new Date(), 'yyyy-MM-dd'));
   };
 
@@ -277,11 +277,15 @@ const Dashboard: React.FC = () => {
   };
 
   // Assets series
-  const { chartMonths, assetsInfo } = useMemo(() => {
-    const items = (assets || []).map(a => ({ ...a, key: `asset_${a.assetId}`, id: a.assetId, name: a.name }));
-    const getValues = (asset: any) => (asset.assetValues ?? []).map((v: any) => ({ date: parseISO(v.valuationDate), value: Number(v.currentValue ?? v.outstandingBalance ?? 0) }));
-    return buildMonthsSeries(items, getValues, 0);
-  }, [assets, metrics, startDate, endDate]);
+    const { months: chartMonths, infos: assetsInfo } = useMemo(() => {
+      const items = (assets || []).map(a => ({ ...a, key: `asset_${a.assetId}`, id: a.assetId, name: a.name }));
+      const getValues = (asset: any) =>
+        (asset.assetValues ?? []).map((v: any) => ({
+          date: parseISO(v.valuationDate),
+          value: Number(v.currentValue ?? v.outstandingBalance ?? 0)
+        }));
+      return buildMonthsSeries(items, getValues, 0);
+    }, [assets, metrics, startDate, endDate]);
 
   // Liabilities series
   const { months: liabChartMonths, infos: liabilitiesInfo } = useMemo(() => {
