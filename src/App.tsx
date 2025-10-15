@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Assets from "./pages/Assets";
 import Liabilities from "./pages/Liabilities";
 import Transactions from "./pages/Transactions";
+import ExcelImport from './pages/ExcelImport';
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Transactions />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/excel-import"
+              element={
+                <ProtectedRoute>
+                  <ExcelImport />
                 </ProtectedRoute>
               }
             />

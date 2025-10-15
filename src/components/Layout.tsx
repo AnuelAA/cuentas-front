@@ -8,6 +8,7 @@ import {
   LogOut,
   Menu,
   Wallet,
+  Upload
 } from 'lucide-react';
 import {
   Sidebar,
@@ -46,6 +47,11 @@ const menuItems = [
     title: 'Transacciones',
     url: '/transactions',
     icon: ArrowLeftRight,
+  },
+  {
+    title: 'Importar Excel',
+    url: '/excel-import',
+    icon: Upload,
   },
 ];
 

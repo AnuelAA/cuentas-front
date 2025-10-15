@@ -210,4 +210,29 @@ export const getDashboardSummary = async (
   return response.data;
 };
 
+export const importExcel = async (
+  userId: number,
+  file: File,
+  year?: number
+): Promise<any> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const params: Record<string, any> = {};
+  if (year != null) params.year = year;
+
+  const response = await api.post(`/users/${userId}/excel/importNew`, formData, {
+    params,
+    headers: {
+      // axios detecta multipart automáticamente, pero es seguro dejarlo
+      'Content-Type': 'multipart/form-data',
+    },
+    // timeout opcional más alto si los ficheros son grandes
+    timeout: 60000,
+  });
+
+  return response.data;
+};
+
+
 export default api;
