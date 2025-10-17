@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import ChatBot from '@/components/ChatBot/ChatBot';
 
 const menuItems = [
   {
@@ -134,6 +135,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="p-6">{children}</div>
         </main>
       </div>
+      {/* Chat bot fijo visible en todas las páginas */}
+      <ChatBot />
     </SidebarProvider>
   );
 };
