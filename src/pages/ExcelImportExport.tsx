@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { importExcel } from '@/services/api';
+import { importExcel, exportExcel } from '@/services/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,22 +8,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
-const ExcelImport: React.FC = () => {
+const ExcelImportExport: React.FC = () => {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.userId) {
-      toast.error('Usuario no autenticado');
-      return;
-    }
-    if (!file) {
-      toast.error('Selecciona un fichero .xlsx');
-      return;
-    }
+    if (!user?.userId) { toast.error('Usuario no autenticado'); return; }
+    if (!file) { toast.error('Selecciona un fichero .xlsx'); return; }
 
     setLoading(true);
     try {
@@ -38,10 +33,32 @@ const ExcelImport: React.FC = () => {
     }
   };
 
+  const handleExport = async () => {
+    if (!user?.userId) { toast.error('Usuario no autenticado'); return; }
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportExcel(user.userId, Number(year));
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Export descargado');
+    } catch (err) {
+      console.error('Error exportando excel:', err);
+      toast.error('Error al exportar el fichero');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight">Importar Excel</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Excel - Importar / Exportar</h2>
 
         <Card>
           <CardHeader>
@@ -80,6 +97,9 @@ const ExcelImport: React.FC = () => {
                 <Button type="button" variant="outline" onClick={() => { setFile(null); setYear(String(new Date().getFullYear())); }}>
                   Limpiar
                 </Button>
+                <Button type="button" onClick={handleExport} disabled={exporting}>
+                  {exporting ? 'Generando...' : 'Exportar'}
+                </Button>
               </div>
             </form>
           </CardContent>
@@ -89,4 +109,4 @@ const ExcelImport: React.FC = () => {
   );
 };
 
-export default ExcelImport;
+export default ExcelImportExport;

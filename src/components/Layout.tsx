@@ -49,8 +49,8 @@ const menuItems = [
     icon: ArrowLeftRight,
   },
   {
-    title: 'Importar Excel',
-    url: '/excel-import',
+    title: 'Excel - Importar / Exportar',
+    url: '/excel-import-export',
     icon: Upload,
   },
 ];

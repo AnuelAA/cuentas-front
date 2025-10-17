@@ -94,14 +94,13 @@ const Liabilities: React.FC = () => {
       const startDate = '2000-01-01';
       const endDate = '2099-12-31';
 
-      const [progress, allTransactions] = await Promise.all([
+      const [progress, transactions] = await Promise.all([
         getLiabilityProgress(user.userId, liability.liabilityId),
-        getTransactions(user.userId, startDate, endDate)
+        // pedir al backend las transacciones ya filtradas por liabilityId
+        getTransactions(user.userId, startDate, endDate, undefined, liability.liabilityId)
       ]);
 
-      // Filtrar transacciones asociadas a este pasivo
-      const transactions = allTransactions.filter(t => t.liabilityId === liability.liabilityId);
-
+      // ya no hace falta filtrar aquí
       setSelectedLiability(progress);
       setSelectedLiabilityData(liability);
       setLiabilityTransactions(transactions);
@@ -268,10 +267,7 @@ const Liabilities: React.FC = () => {
                       {/* Ingresos */}
                       <div>
                         <h3 className="text-lg font-semibold mb-3 text-success">Ingresos</h3>
-                        {liabilityTransactions.filter(t => {
-                          const category = getCategoryInfo(t.categoryId);
-                          return category?.type === 'income';
-                        }).length === 0 ? (
+                        {liabilityTransactions.filter(t => String(t.type ?? '').toLowerCase() === 'income').length === 0 ? (
                           <p className="text-center text-muted-foreground py-4 text-sm">
                             No hay ingresos registrados
                           </p>
@@ -288,19 +284,17 @@ const Liabilities: React.FC = () => {
                               </TableHeader>
                               <TableBody>
                                 {liabilityTransactions
-                                  .filter(t => {
-                                    const category = getCategoryInfo(t.categoryId);
-                                    return category?.type === 'income';
-                                  })
+                                  .filter(t => String(t.type ?? '').toLowerCase() === 'income')
+                                  .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
                                   .map((transaction) => {
                                     const category = getCategoryInfo(transaction.categoryId);
                                     return (
                                       <TableRow key={transaction.transactionId}>
-                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{transaction.description}</TableCell>
+                                        <TableCell>{format(parseISO(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{transaction.description || '-'}</TableCell>
                                         <TableCell>{category?.name || '-'}</TableCell>
                                         <TableCell className="text-right font-semibold text-success">
-                                          {formatCurrency(Math.abs(transaction.amount))}
+                                          {formatCurrency(Math.abs(Number(transaction.amount ?? 0)))}
                                         </TableCell>
                                       </TableRow>
                                     );
@@ -314,10 +308,7 @@ const Liabilities: React.FC = () => {
                       {/* Gastos */}
                       <div>
                         <h3 className="text-lg font-semibold mb-3 text-destructive">Gastos</h3>
-                        {liabilityTransactions.filter(t => {
-                          const category = getCategoryInfo(t.categoryId);
-                          return category?.type === 'expense';
-                        }).length === 0 ? (
+                        {liabilityTransactions.filter(t => String(t.type ?? '').toLowerCase() === 'expense').length === 0 ? (
                           <p className="text-center text-muted-foreground py-4 text-sm">
                             No hay gastos registrados
                           </p>
@@ -334,19 +325,17 @@ const Liabilities: React.FC = () => {
                               </TableHeader>
                               <TableBody>
                                 {liabilityTransactions
-                                  .filter(t => {
-                                    const category = getCategoryInfo(t.categoryId);
-                                    return category?.type === 'expense';
-                                  })
+                                  .filter(t => String(t.type ?? '').toLowerCase() === 'expense')
+                                  .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
                                   .map((transaction) => {
                                     const category = getCategoryInfo(transaction.categoryId);
                                     return (
                                       <TableRow key={transaction.transactionId}>
-                                        <TableCell>{format(new Date(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{transaction.description}</TableCell>
+                                        <TableCell>{format(parseISO(transaction.transactionDate), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{transaction.description || '-'}</TableCell>
                                         <TableCell>{category?.name || '-'}</TableCell>
                                         <TableCell className="text-right font-semibold text-destructive">
-                                          {formatCurrency(Math.abs(transaction.amount))}
+                                          {formatCurrency(Math.abs(Number(transaction.amount ?? 0)))}
                                         </TableCell>
                                       </TableRow>
                                     );

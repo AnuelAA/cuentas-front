@@ -140,10 +140,17 @@ export const getTransactions = async (
   userId: number,
   startDate?: string,
   endDate?: string,
-  relatedAssetId?: number
+  relatedAssetId?: number,
+  liabilityId?: number
 ): Promise<Transaction[]> => {
+  const params: Record<string, any> = {};
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
+  if (relatedAssetId != null) params.relatedAssetId = relatedAssetId;
+  if (liabilityId != null) params.liabilityId = liabilityId;
+
   const response = await api.get<Transaction[]>(`/users/${userId}/transactions`, {
-    params: { startDate, endDate, relatedAssetId },
+    params,
   });
   return response.data;
 };
@@ -234,5 +241,26 @@ export const importExcel = async (
   return response.data;
 };
 
+export const exportExcel = async (
+  userId: number,
+  year?: number
+): Promise<{ blob: Blob; filename: string }> => {
+  const params: Record<string, any> = {};
+  if (year != null) params.year = year;
+
+  const response = await api.get(`/users/${userId}/excel/exportNew`, {
+    params,
+    responseType: 'blob',
+    timeout: 60000,
+    withCredentials: true,
+  });
+
+  const cd = response.headers['content-disposition'] || response.headers['Content-Disposition'] || '';
+  let filename = `cuentas-New_${year ?? new Date().getFullYear()}.xlsx`;
+  const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^;"']+)/i);
+  if (m && m[1]) filename = decodeURIComponent(m[1].replace(/["']/g, ''));
+
+  return { blob: response.data as Blob, filename };
+};
 
 export default api;
