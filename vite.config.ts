@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       '/api': {
-        target: 'https://cuentas-springboot.onrender.com',
+        target: 'http://46.101.144.147:8080',
         changeOrigin: true,
         secure: true,
       }
