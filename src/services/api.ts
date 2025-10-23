@@ -18,6 +18,14 @@ import type {
 // URL base fija al backend; permite override con VITE_API_URL si se define
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://46.101.144.147:8080/api') as string;
 
+export const createCategory = async (
+  userId: number,
+  payload: { name: string; type: 'income' | 'expense' }
+): Promise<Category> => {
+  const response = await api.post<Category>(`/users/${userId}/categories`, payload);
+  return response.data;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -31,46 +39,23 @@ const api = axios.create({
 export const login = async (credentials: LoginRequest): Promise<User> => {
   try {
     const response = await api.get('/users');
-    // Logs útiles para depuración
-    console.log('Full API Response:', response);
-    console.log('Response data type:', typeof response.data);
-    console.log('Response data:', JSON.stringify(response.data, null, 2));
-
-    // Maneja diferentes formatos de respuesta
     let users: User[] = [];
     if (Array.isArray(response.data)) {
       users = response.data;
     } else if (response.data && typeof response.data === 'object') {
-      // Si la respuesta es un objeto, busca la propiedad que contiene los usuarios
-      console.log('Response data keys:', Object.keys(response.data));
       const possibleArrays = Object.values(response.data).filter(Array.isArray);
-      console.log('Possible arrays found:', possibleArrays);
       if (possibleArrays.length > 0) {
         users = possibleArrays[0] as User[];
       }
     }
-
-    console.log('Users found:', users);
-
     if (users.length === 0) {
       throw new Error('No se pudieron cargar los usuarios. Verifica que la API esté devolviendo datos correctamente.');
     }
-
     const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
-
-    if (user) {
-      return user;
-    }
-
+    if (user) return user;
     throw new Error('Usuario o contraseña incorrectos');
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('Axios error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
-      });
       throw new Error(`Error de conexión con la API: ${error.message}`);
     }
     throw error;
@@ -141,13 +126,17 @@ export const getTransactions = async (
   startDate?: string,
   endDate?: string,
   relatedAssetId?: number,
-  liabilityId?: number
+  liabilityId?: number,
+  assetId?: number,
+  categoryId?: number
 ): Promise<Transaction[]> => {
   const params: Record<string, any> = {};
   if (startDate) params.startDate = startDate;
   if (endDate) params.endDate = endDate;
   if (relatedAssetId != null) params.relatedAssetId = relatedAssetId;
   if (liabilityId != null) params.liabilityId = liabilityId;
+  if (assetId != null) params.assetId = assetId;
+  if (categoryId != null) params.categoryId = categoryId;
 
   const response = await api.get<Transaction[]>(`/users/${userId}/transactions`, {
     params,
@@ -159,10 +148,33 @@ export const createTransaction = async (
   userId: number,
   transaction: CreateTransactionRequest
 ): Promise<Transaction> => {
+  const body = { ...transaction, amount: Math.abs(transaction.amount) }; // asegurar positivo
   const response = await api.post<Transaction>(
     `/users/${userId}/transactions`,
-    transaction
+    body
   );
+  return response.data;
+};
+
+export const updateTransaction = async (
+  userId: number,
+  transactionId: number,
+  transaction: Partial<CreateTransactionRequest> & { transactionId?: number; userId?: number }
+): Promise<Transaction> => {
+  const body = {
+    transactionId: transactionId,
+    userId: userId,
+    categoryId: transaction.categoryId ?? null,
+    assetId: transaction.assetId ?? null,
+    relatedAssetId: transaction.relatedAssetId ?? null,
+    liabilityId: transaction.liabilityId ?? null,
+    amount: Math.abs(transaction.amount ?? 0),
+    type: transaction.type ?? null,
+    transactionDate: transaction.transactionDate ?? null,
+    description: transaction.description ?? null,
+  };
+
+  const response = await api.put<Transaction>(`/users/${userId}/transactions/${transactionId}`, body);
   return response.data;
 };
 
@@ -171,6 +183,29 @@ export const deleteTransaction = async (
   transactionId: number
 ): Promise<void> => {
   await api.delete(`/users/${userId}/transactions/${transactionId}`);
+};
+
+// Batch create: crea una por una y devuelve resumen { successes, failures }
+export const createTransactionsBatch = async (
+  userId: number,
+  transactions: CreateTransactionRequest[]
+): Promise<{
+  successes: Transaction[];
+  failures: { transaction: CreateTransactionRequest; error: any }[];
+}> => {
+  const successes: Transaction[] = [];
+  const failures: { transaction: CreateTransactionRequest; error: any }[] = [];
+
+  for (const t of transactions) {
+    try {
+      const created = await createTransaction(userId, t);
+      successes.push(created);
+    } catch (error) {
+      failures.push({ transaction: t, error: axios.isAxiosError(error) ? error.response?.data ?? error.message : String(error) });
+    }
+  }
+
+  return { successes, failures };
 };
 
 // Categories

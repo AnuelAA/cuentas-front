@@ -63,6 +63,7 @@ export interface Transaction {
   amount: number;
   transactionDate: string;
   description: string;
+  type?: 'income' | 'expense';
   createdAt?: string;
   updatedAt?: string;
 }
@@ -88,8 +89,14 @@ export interface DashboardMetrics {
 export interface CreateTransactionRequest {
   userId?: number;
   categoryId?: number;
+  categoryName?: string; // helper for UI when user types a name that doesn't exist
   assetId?: number;
+  assetName?: string;
+  relatedAssetId?: number;
+  relatedAssetName?: string;
   liabilityId?: number;
+  liabilityName?: string;
+  type?: 'income' | 'expense';
   amount: number;
   transactionDate: string;
   description: string;
