@@ -23,8 +23,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, Save } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { Eye, Save, Plus, RefreshCw, CreditCard, AlertCircle, TrendingDown, DollarSign } from 'lucide-react';
+import { format, parseISO, isValid, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
 import { startOfMonth, format as formatDate, parseISO as parseISODate } from 'date-fns';
@@ -47,8 +47,8 @@ const Liabilities: React.FC = () => {
       principalAmount: 0,
       outstandingBalance: 0,
     });
-  // Helper: obtener último snapshot de liabilityValues por valuationDate
-  const getLatestLiabilitySnapshot = (liability: Liability) => {
+  // Helper: obtener snapshot de liabilityValues para el mes seleccionado
+  const getLiabilitySnapshotForMonth = (liability: Liability, month: Date) => {
     if (!Array.isArray(liability.liabilityValues) || liability.liabilityValues.length === 0) {
       return {
         outstandingBalance: Number(liability.outstandingBalance ?? 0),
@@ -56,22 +56,28 @@ const Liabilities: React.FC = () => {
         endDate: null as Date | null
       };
     }
-    const sorted = [...liability.liabilityValues]
+    const targetEnd = endOfMonth(month).getTime();
+    const candidates = liability.liabilityValues
       .map(v => ({ ...v, _date: parseISO(v.valuationDate) }))
-      .filter(v => isValid(v._date))
+      .filter(v => isValid(v._date) && v._date.getTime() <= targetEnd)
       .sort((a, b) => b._date.getTime() - a._date.getTime());
-    if (sorted.length === 0) {
+    if (candidates.length === 0) {
       return {
         outstandingBalance: Number(liability.outstandingBalance ?? 0),
         valuationDate: null,
         endDate: null
       };
     }
-    const latest = sorted[0];
+    // Preferir uno dentro del mismo mes/año, si existe
+    const sameMonth = candidates.find(c => 
+      c._date.getMonth() === month.getMonth() && 
+      c._date.getFullYear() === month.getFullYear()
+    );
+    const chosen = sameMonth ?? candidates[0];
     return {
-      outstandingBalance: Number(latest.outstandingBalance ?? liability.outstandingBalance ?? 0),
-      valuationDate: latest._date,
-      endDate: latest.endDate ? (isValid(parseISO(latest.endDate)) ? parseISO(latest.endDate) : null) : null
+      outstandingBalance: Number(chosen.outstandingBalance ?? liability.outstandingBalance ?? 0),
+      valuationDate: chosen._date,
+      endDate: chosen.endDate ? (isValid(parseISO(chosen.endDate)) ? parseISO(chosen.endDate) : null) : null
     };
   };
 
@@ -199,11 +205,11 @@ const Liabilities: React.FC = () => {
     }).format(Number(value || 0));
   };
 
-  // Calcular progreso usando outstandingBalance del último snapshot
+  // Calcular progreso usando outstandingBalance del snapshot del mes seleccionado
   const calculateProgress = (liability: Liability) => {
     const principal = Number(liability.principalAmount ?? 0);
     if (!principal) return 0;
-    const { outstandingBalance } = getLatestLiabilitySnapshot(liability);
+    const { outstandingBalance } = getLiabilitySnapshotForMonth(liability, selectedMonth);
     const paid = principal - outstandingBalance;
     return (paid / principal) * 100;
   };
@@ -222,23 +228,107 @@ const Liabilities: React.FC = () => {
     );
   }
 
+  const totalPrincipal = liabilities.reduce((sum, l) => sum + (l.principalAmount || 0), 0);
+  const totalOutstanding = liabilities.reduce((sum, l) => {
+    const snapshot = getLiabilitySnapshotForMonth(l, selectedMonth);
+    return sum + snapshot.outstandingBalance;
+  }, 0);
+  const totalPaid = totalPrincipal - totalOutstanding;
+  const overallProgress = totalPrincipal > 0 ? (totalPaid / totalPrincipal) * 100 : 0;
+
   return (
     <Layout>
       <div className="space-y-6 px-2 sm:px-0">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Pasivos</h2>
-          <div className="flex-1">
-            <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+        {/* Header mejorado */}
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                Pasivos
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Monitorea el progreso de tus deudas y obligaciones</p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex-1 sm:flex-none">
+                <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => fetchLiabilities()} 
+                  variant="outline" 
+                  className="flex-1 sm:flex-none"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Actualizar
+                </Button>
+                <Button 
+                  onClick={() => openLiabilityModal(null)} 
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white shadow-md"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nuevo pasivo
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button onClick={() => fetchLiabilities()} variant="outline" className="flex-1 sm:flex-none">Actualizar</Button>
-            <Button onClick={() => openLiabilityModal(null)} className="flex-1 sm:flex-none">Nuevo pasivo</Button>
+
+          {/* Estadísticas rápidas */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-orange-200 bg-gradient-to-br from-orange-50 to-orange-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-orange-700/80 mb-1">Principal Total</p>
+                    <p className="text-2xl font-bold text-orange-700">{formatCurrency(totalPrincipal)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+                    <CreditCard className="h-6 w-6 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-red-200 bg-gradient-to-br from-red-50 to-red-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-red-700/80 mb-1">Saldo Pendiente</p>
+                    <p className="text-2xl font-bold text-red-700">{formatCurrency(totalOutstanding)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <AlertCircle className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-green-200 bg-gradient-to-br from-green-50 to-green-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-700/80 mb-1">Progreso General</p>
+                    <p className="text-2xl font-bold text-green-700">{overallProgress.toFixed(1)}%</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <TrendingDown className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Listado de Pasivos</CardTitle>
+        <Card className="border-orange-100 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-orange-50/50 to-red-50/50 border-b border-orange-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Listado de Pasivos</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-0.5">{liabilities.length} {liabilities.length === 1 ? 'pasivo registrado' : 'pasivos registrados'}</p>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {liabilities.length === 0 ? (
@@ -247,37 +337,51 @@ const Liabilities: React.FC = () => {
               <div className="overflow-x-auto -mx-2 sm:mx-0">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[150px]">Nombre</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Principal</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Saldo actual</TableHead>
-                      <TableHead className="text-right min-w-[140px]">Fin del snapshot</TableHead>
-                      <TableHead className="text-center min-w-[200px]">Progreso</TableHead>
-                      <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
+                    <TableRow className="hover:bg-transparent border-b-2">
+                      <TableHead className="min-w-[150px] font-semibold">Nombre</TableHead>
+                      <TableHead className="text-right min-w-[120px] font-semibold">Principal</TableHead>
+                      <TableHead className="text-right min-w-[120px] font-semibold">Saldo actual</TableHead>
+                      <TableHead className="text-right min-w-[140px] font-semibold">Fin del snapshot</TableHead>
+                      <TableHead className="text-center min-w-[200px] font-semibold">Progreso</TableHead>
+                      <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {liabilities.map(l => {
-                      const snapshot = getLatestLiabilitySnapshot(l);
+                      const snapshot = getLiabilitySnapshotForMonth(l, selectedMonth);
                       const progress = calculateProgress(l);
                       return (
-                        <TableRow key={l.liabilityId}>
-                          <TableCell className="font-medium">{l.name}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(Number(l.principalAmount ?? 0))}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(snapshot.outstandingBalance)}</TableCell>
-                          <TableCell className="text-right">
+                        <TableRow key={l.liabilityId} className="hover:bg-slate-50/50 transition-colors">
+                          <TableCell className="font-semibold">{l.name}</TableCell>
+                          <TableCell className="text-right font-medium text-orange-700">{formatCurrency(Number(l.principalAmount ?? 0))}</TableCell>
+                          <TableCell className="text-right font-semibold text-red-700">{formatCurrency(snapshot.outstandingBalance)}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
                             {snapshot.valuationDate ? format(snapshot.valuationDate, 'dd/MM/yyyy') : snapshot.endDate ? format(snapshot.endDate, 'dd/MM/yyyy') : '—'}
                           </TableCell>
                           <TableCell className="text-center" style={{ minWidth: 180 }}>
                             <div className="flex items-center gap-3">
                               <div className="w-full">
-                                <Progress value={Math.max(0, Math.min(100, progress))} />
+                                <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      progress >= 75 ? 'bg-green-500' : progress >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="w-16 text-right">{progress.toFixed(1)}%</div>
+                              <div className={`w-16 text-right font-semibold ${progress >= 75 ? 'text-green-700' : progress >= 50 ? 'text-yellow-700' : 'text-red-700'}`}>
+                                {progress.toFixed(1)}%
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Button variant="ghost" size="sm" onClick={() => handleViewDetails(l)}>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleViewDetails(l)}
+                              className="hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                            >
                               <Eye className="h-4 w-4" />
                             </Button>
                           </TableCell>

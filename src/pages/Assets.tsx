@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Eye, Save } from 'lucide-react';
+import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign } from 'lucide-react';
 import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
@@ -46,17 +46,27 @@ const Assets: React.FC = () => {
       acquisitionValue: 0,
       currentValue: 0,
     });
-  // Obtiene el assetValue más reciente (valor + fecha)
-  const getLatestAssetValue = (asset: Asset): { value: number; date: Date | null } => {
+  // Obtiene el assetValue para el mes seleccionado (valor + fecha)
+  const getAssetValueForMonth = (asset: Asset, month: Date): { value: number; date: Date | null } => {
     if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
       return { value: Number(asset.currentValue ?? 0), date: asset.currentValue ? new Date() : null };
     }
-    const sorted = [...asset.assetValues]
+    const targetEnd = endOfMonth(month).getTime();
+    const candidates = asset.assetValues
       .map(av => ({ ...av, _date: parseISO(av.valuationDate) }))
-      .filter(av => isValid(av._date))
+      .filter(av => isValid(av._date) && av._date.getTime() <= targetEnd)
       .sort((a, b) => b._date.getTime() - a._date.getTime());
-    if (sorted.length === 0) return { value: Number(asset.currentValue ?? 0), date: null };
-    return { value: Number(sorted[0].currentValue ?? 0), date: sorted[0]._date };
+    if (candidates.length === 0) {
+      // Si no hay valor para ese mes, usar el más reciente antes de ese mes o el currentValue
+      return { value: Number(asset.currentValue ?? 0), date: null };
+    }
+    // Preferir uno dentro del mismo mes/año, si existe
+    const sameMonth = candidates.find(c => 
+      c._date.getMonth() === month.getMonth() && 
+      c._date.getFullYear() === month.getFullYear()
+    );
+    const chosen = sameMonth ?? candidates[0];
+    return { value: Number(chosen.currentValue ?? 0), date: chosen._date };
   };
 
   // Busca el valor correspondiente al mes/año de referencia (elige el último <= fin de ese mes)
@@ -193,13 +203,6 @@ const Assets: React.FC = () => {
     }).format(Number(value || 0));
   };
 
-  // ROI usa el latest currentValue existente
-  const calculateROI = (asset: Asset) => {
-    const { value: current } = getLatestAssetValue(asset);
-    const acquisition = Number(asset.acquisitionValue ?? 0);
-    if (!acquisition) return 0;
-    return ((current - acquisition) / acquisition) * 100;
-  };
 
   const getCategoryInfo = (categoryId?: number) => {
     return categories.find(c => c.categoryId === categoryId);
@@ -215,23 +218,112 @@ const Assets: React.FC = () => {
     );
   }
 
+  const totalValue = assets.reduce((sum, a) => {
+    const { value } = getAssetValueForMonth(a, selectedMonth);
+    return sum + value;
+  }, 0);
+  const totalAcquisition = assets.reduce((sum, a) => sum + (a.acquisitionValue || 0), 0);
+  const overallROI = totalAcquisition > 0 ? ((totalValue - totalAcquisition) / totalAcquisition) * 100 : 0;
+
   return (
     <Layout>
       <div className="space-y-6 px-2 sm:px-0">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Activos</h2>
-          <div className="flex-1">
-            <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+        {/* Header mejorado */}
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                Activos
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Gestiona y monitorea el valor de tus activos</p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex-1 sm:flex-none">
+                <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => fetchAssets()} 
+                  variant="outline" 
+                  className="flex-1 sm:flex-none"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Actualizar
+                </Button>
+                <Button 
+                  onClick={() => openAssetModal(null)} 
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-md"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nuevo activo
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button onClick={() => fetchAssets()} variant="outline" className="flex-1 sm:flex-none">Actualizar</Button>
-            <Button onClick={() => openAssetModal(null)} className="flex-1 sm:flex-none">Nuevo activo</Button>
+
+          {/* Estadísticas rápidas */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-700/80 mb-1">Valor Total</p>
+                    <p className="text-2xl font-bold text-blue-700">{formatCurrency(totalValue)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-purple-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-purple-700/80 mb-1">Valor Adquisición</p>
+                    <p className="text-2xl font-bold text-purple-700">{formatCurrency(totalAcquisition)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-purple-500/20 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={`border-2 ${overallROI >= 0 ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-red-200 bg-gradient-to-br from-red-50 to-red-50/50'}`}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">ROI Promedio</p>
+                    <p className={`text-2xl font-bold ${overallROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {overallROI.toFixed(2)}%
+                    </p>
+                  </div>
+                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${overallROI >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                    {overallROI >= 0 ? (
+                      <TrendingUp className={`h-6 w-6 text-green-600`} />
+                    ) : (
+                      <TrendingDown className={`h-6 w-6 text-red-600`} />
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Listado de Activos</CardTitle>
+        <Card className="border-primary/20 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-primary/5 to-primary/5 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
+                  <BarChart3 className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Listado de Activos</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-0.5">{assets.length} {assets.length === 1 ? 'activo registrado' : 'activos registrados'}</p>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {assets.length === 0 ? (
@@ -242,23 +334,24 @@ const Assets: React.FC = () => {
               <div className="overflow-x-auto -mx-2 sm:mx-0">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[150px]">Nombre</TableHead>
-                      <TableHead className="text-right min-w-[140px]">Valor Adquisición</TableHead>
-                      <TableHead className="text-right min-w-[120px]">Valor Actual</TableHead>
-                      <TableHead className="text-right min-w-[100px]">ROI</TableHead>
-                      <TableHead className="text-right min-w-[140px]">Rentabilidad anual</TableHead>
-                      <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
+                    <TableRow className="hover:bg-transparent border-b-2">
+                      <TableHead className="min-w-[150px] font-semibold">Nombre</TableHead>
+                      <TableHead className="text-right min-w-[140px] font-semibold">Valor Adquisición</TableHead>
+                      <TableHead className="text-right min-w-[120px] font-semibold">Valor Actual</TableHead>
+                      <TableHead className="text-right min-w-[120px] font-semibold">ROI</TableHead>
+                      <TableHead className="text-right min-w-[150px] font-semibold">Rentabilidad anual</TableHead>
+                      <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {assets.map((asset) => {
-                      const { value: currentValue, date: latestDate } = getLatestAssetValue(asset);
-                      const roi = calculateROI(asset);
+                      const { value: currentValue, date: latestDate } = getAssetValueForMonth(asset, selectedMonth);
+                      // Para calcular ROI, usar el valor del mes seleccionado vs valor de adquisición
+                      const acquisition = Number(asset.acquisitionValue ?? 0);
+                      const roi = acquisition > 0 ? ((currentValue - acquisition) / acquisition) * 100 : 0;
 
-                      // referencia para "este mes" = fecha del latest assetValue si existe, sino ahora
-                      const refDate = latestDate ?? new Date();
-                      const lastYearRef = subYears(refDate, 1);
+                      // Para calcular rentabilidad anual: comparar con el valor del mismo mes hace un año
+                      const lastYearRef = subYears(selectedMonth, 1);
                       const lastYearValue = getValueForMonth(asset, lastYearRef);
 
                       // calcular % anual
@@ -270,21 +363,21 @@ const Assets: React.FC = () => {
                       }
 
                       return (
-                        <TableRow key={asset.assetId}>
-                          <TableCell className="font-medium">{asset.name}</TableCell>
-                          <TableCell className="text-right">
+                        <TableRow key={asset.assetId} className="hover:bg-slate-50/50 transition-colors">
+                          <TableCell className="font-semibold">{asset.name}</TableCell>
+                          <TableCell className="text-right font-medium text-muted-foreground">
                             {formatCurrency(asset.acquisitionValue)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right font-semibold text-primary">
                             {formatCurrency(currentValue)}
                           </TableCell>
                           <TableCell className="text-right">
                             <span
-                              className={
+                              className={`inline-flex items-center justify-end gap-1 px-2 py-1 rounded-md font-semibold ${
                                 roi >= 0
-                                  ? 'text-success flex items-center justify-end gap-1'
-                                  : 'text-destructive flex items-center justify-end gap-1'
-                              }
+                                  ? 'text-green-700 bg-green-50'
+                                  : 'text-red-700 bg-red-50'
+                              }`}
                             >
                               {roi >= 0 ? (
                                 <TrendingUp className="h-4 w-4" />
@@ -301,11 +394,11 @@ const Assets: React.FC = () => {
                               <span className="text-muted-foreground">—</span>
                             ) : (
                               <span
-                                className={
+                                className={`inline-flex items-center justify-end gap-1 px-2 py-1 rounded-md font-semibold ${
                                   annualPct >= 0
-                                    ? 'text-success flex items-center justify-end gap-1'
-                                    : 'text-destructive flex items-center justify-end gap-1'
-                                }
+                                    ? 'text-green-700 bg-green-50'
+                                    : 'text-red-700 bg-red-50'
+                                }`}
                               >
                                 {annualPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                                 {annualPct.toFixed(2)}%
@@ -318,6 +411,7 @@ const Assets: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleViewDetails(asset)}
+                              className="hover:bg-primary/10 hover:text-primary transition-colors"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

@@ -2,6 +2,7 @@ import axios from 'axios';
 import type {
   User,
   LoginRequest,
+  LoginResponse,
   CreateUserRequest,
   Asset,
   AssetPerformance,
@@ -33,30 +34,62 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 10000,
-  // withCredentials: true, // descomenta si tu backend usa cookies de sesión
 });
 
-// Auth
-export const login = async (credentials: LoginRequest): Promise<User> => {
-  try {
-    const response = await api.get('/users');
-    let users: User[] = [];
-    if (Array.isArray(response.data)) {
-      users = response.data;
-    } else if (response.data && typeof response.data === 'object') {
-      const possibleArrays = Object.values(response.data).filter(Array.isArray);
-      if (possibleArrays.length > 0) {
-        users = possibleArrays[0] as User[];
+// Interceptor para agregar token a todas las peticiones
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Interceptor para manejar errores de autenticación
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expirado o inválido
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('user');
+      // Solo redirigir si no estamos ya en login
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
       }
     }
-    if (users.length === 0) {
-      throw new Error('No se pudieron cargar los usuarios. Verifica que la API esté devolviendo datos correctamente.');
-    }
-    const user = users.find(u => u.email === credentials.email && u.password === credentials.password);
-    if (user) return user;
-    throw new Error('Usuario o contraseña incorrectos');
+    return Promise.reject(error);
+  }
+);
+
+// Auth
+export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
+  try {
+    // El endpoint de login es público, no necesita token
+    const response = await axios.post<LoginResponse>(
+      `${API_BASE_URL}/auth/login`,
+      {
+        email: credentials.email,
+        password: credentials.password,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    // Guardar token y userId en localStorage
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('userId', String(response.data.userId));
+
+    return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      if (error.response?.status === 401) {
+        throw new Error('Usuario o contraseña incorrectos');
+      }
       throw new Error(`Error de conexión con la API: ${error.message}`);
     }
     throw error;
@@ -65,6 +98,8 @@ export const login = async (credentials: LoginRequest): Promise<User> => {
 
 export const createUser = async (userData: CreateUserRequest): Promise<User> => {
   try {
+    // El endpoint de creación puede requerir autenticación si el backend lo exige
+    // Si está público, el interceptor no añadirá token (no existe aún)
     const response = await api.post<User>('/users', {
       name: userData.name,
       email: userData.email,
@@ -73,6 +108,9 @@ export const createUser = async (userData: CreateUserRequest): Promise<User> => 
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      if (error.response?.status === 401) {
+        throw new Error('No autorizado. Por favor inicia sesión para crear usuarios.');
+      }
       const errorMessage = error.response?.data?.message || error.response?.data || error.message;
       throw new Error(`Error al crear el usuario: ${errorMessage}`);
     }

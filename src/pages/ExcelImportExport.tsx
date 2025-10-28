@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Upload, Download, FileSpreadsheet, Calendar, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ExcelImportExport: React.FC = () => {
@@ -58,52 +59,180 @@ const ExcelImportExport: React.FC = () => {
   return (
     <Layout>
       <div className="space-y-6 px-2 sm:px-0">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Excel - Importar / Exportar</h2>
+        {/* Header mejorado */}
+        <div>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            Excel - Importar / Exportar
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">Gestiona tus datos financieros mediante archivos Excel</p>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Subir archivo .xlsx</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Fichero Excel</Label>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={(e) => {
-                    const f = e.target.files && e.target.files[0];
-                    setFile(f ?? null);
-                  }}
-                />
-                {file && <div className="text-sm text-muted-foreground">{file.name}</div>}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Card de Importar */}
+          <Card className="border-blue-100 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-b border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-500 flex items-center justify-center">
+                  <Upload className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-blue-900">Importar desde Excel</CardTitle>
+                  <p className="text-sm text-blue-700/70 mt-0.5">Sube un archivo .xlsx o .xls</p>
+                </div>
               </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Fichero Excel</Label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files && e.target.files[0];
+                        setFile(f ?? null);
+                      }}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer bg-blue-50/50 hover:bg-blue-50 transition-colors"
+                    >
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <FileSpreadsheet className="w-10 h-10 mb-3 text-blue-500" />
+                        <p className="mb-2 text-sm text-blue-700">
+                          <span className="font-semibold">Haz clic para subir</span> o arrastra el archivo
+                        </p>
+                        <p className="text-xs text-blue-600">Excel (.xlsx, .xls)</p>
+                      </div>
+                    </label>
+                  </div>
+                  {file && (
+                    <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <FileSpreadsheet className="h-5 w-5 text-blue-600" />
+                      <span className="flex-1 text-sm font-medium text-blue-900">{file.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFile(null)}
+                        className="h-6 w-6 p-0 hover:bg-blue-100"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
-              <div className="space-y-2">
-                <Label>Año (opcional)</Label>
-                <Input
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  min={2000}
-                  max={2100}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Año (opcional)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    min={2000}
+                    max={2100}
+                    className="text-lg"
+                  />
+                </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button type="submit" disabled={loading} className="flex-1 sm:flex-none">
-                  {loading ? 'Subiendo...' : 'Subir e Importar'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => { setFile(null); setYear(String(new Date().getFullYear())); }} className="flex-1 sm:flex-none">
-                  Limpiar
-                </Button>
-                <Button type="button" onClick={handleExport} disabled={exporting} className="flex-1 sm:flex-none">
-                  {exporting ? 'Generando...' : 'Exportar'}
-                </Button>
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button 
+                    type="submit" 
+                    disabled={loading || !file}
+                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Subiendo e importando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Subir e Importar
+                      </>
+                    )}
+                  </Button>
+                  {file && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => { setFile(null); setYear(String(new Date().getFullYear())); }}
+                      className="w-full"
+                    >
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Card de Exportar */}
+          <Card className="border-green-100 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-green-50/50 border-b border-green-100">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-green-500 flex items-center justify-center">
+                  <Download className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-green-900">Exportar a Excel</CardTitle>
+                  <p className="text-sm text-green-700/70 mt-0.5">Descarga tus datos en formato Excel</p>
+                </div>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Año
+                  </Label>
+                  <Input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    min={2000}
+                    max={2100}
+                    className="text-lg"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <Button 
+                    onClick={handleExport} 
+                    disabled={exporting}
+                    className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-md"
+                  >
+                    {exporting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Generando archivo...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Exportar a Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    El archivo exportado incluirá todas tus transacciones, activos y pasivos del año seleccionado.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </Layout>
   );

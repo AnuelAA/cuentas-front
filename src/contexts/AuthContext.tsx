@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login as apiLogin } from '@/services/api';
-import type { User, LoginRequest } from '@/types/api';
+import type { User, LoginRequest, LoginResponse } from '@/types/api';
 import { toast } from 'sonner';
 
 interface AuthContextType {
@@ -20,14 +20,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Check if user is logged in from localStorage
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
     const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    
+    if (token && userId && storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        // Asegurarnos de que el userId coincida
+        if (userData.userId === Number(userId)) {
+          setUser(userData);
+        } else {
+          // Limpiar datos inconsistentes
+          localStorage.clear();
+        }
       } catch (error) {
         console.error('Error parsing stored user:', error);
-        localStorage.removeItem('user');
+        localStorage.clear();
       }
+    } else if (token && userId) {
+      // Tenemos token pero no datos del usuario, crear objeto básico
+      setUser({
+        userId: Number(userId),
+        email: localStorage.getItem('email') || '',
+        name: localStorage.getItem('name') || '',
+      } as User);
+    } else {
+      // No hay token, limpiar todo
+      localStorage.clear();
     }
     setIsLoading(false);
   }, []);
@@ -35,14 +55,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (credentials: LoginRequest) => {
     try {
       setIsLoading(true);
-      const userData = await apiLogin(credentials);
+      const loginData: LoginResponse = await apiLogin(credentials);
+      
+      // Crear objeto usuario desde la respuesta del login
+      const userData: User = {
+        userId: loginData.userId,
+        email: loginData.email,
+        name: loginData.name,
+      };
+      
+      // Guardar datos del usuario
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('email', loginData.email);
+      localStorage.setItem('name', loginData.name);
+      
       toast.success(`¡Bienvenido ${userData.name || userData.email}!`);
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      toast.error('Usuario o contraseña incorrectos');
+      const errorMessage = error?.message || 'Usuario o contraseña incorrectos';
+      toast.error(errorMessage);
       throw error;
     } finally {
       setIsLoading(false);
@@ -51,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('user');
+    localStorage.clear();
     toast.success('Sesión cerrada');
     navigate('/login');
   };

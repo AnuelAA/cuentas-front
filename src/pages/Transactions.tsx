@@ -34,7 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -302,44 +303,129 @@ const Transactions: React.FC = () => {
   const incomeRows = rows.filter(r => r.type === 'income');
   const expenseRows = rows.filter(r => r.type === 'expense');
 
+  const totalIncome = incomeRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const netBalance = totalIncome - totalExpenses;
+
   const rowClass = (r: Row, idx: number) => {
-    const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+    const baseClass = 'transition-all duration-200 hover:bg-slate-50/50';
+    const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30';
     const typeClass =
       r.type === 'income'
-        ? 'border-l-4 border-green-400'
+        ? 'border-l-4 border-green-500 hover:border-green-600 hover:shadow-sm'
         : r.type === 'expense'
-        ? 'border-l-4 border-red-400'
+        ? 'border-l-4 border-red-500 hover:border-red-600 hover:shadow-sm'
         : '';
-    return `transition-colors ${stripe} ${typeClass}`;
+    const editedClass = r.isEdited && !r.isNew ? 'ring-2 ring-primary/20 bg-primary/5' : '';
+    const newClass = r.isNew ? 'ring-2 ring-success/30 bg-success/10' : '';
+    return `${baseClass} ${stripe} ${typeClass} ${editedClass} ${newClass}`;
   };
 
   return (
     <Layout>
       <div className="space-y-6 px-2 sm:px-0">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Transacciones</h2>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">Desde</Label>
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 sm:w-auto" />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm whitespace-nowrap">Hasta</Label>
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="flex-1 sm:w-auto" />
-              </div>
+        {/* Header mejorado */}
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                Transacciones
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Gestiona tus ingresos y gastos</p>
             </div>
-            <Button variant="secondary" onClick={handleSaveAll} className="w-full sm:w-auto">
-              <Save className="mr-2 h-4 w-4" /> Guardar
-            </Button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex items-center gap-2 bg-background/50 rounded-lg px-3 py-2 border">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)} 
+                    className="border-0 bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 flex-1 sm:w-auto" 
+                  />
+                </div>
+                <div className="flex items-center gap-2 bg-background/50 rounded-lg px-3 py-2 border">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={(e) => setEndDate(e.target.value)} 
+                    className="border-0 bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 flex-1 sm:w-auto" 
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={handleSaveAll} 
+                className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/20"
+                size="lg"
+              >
+                <Save className="mr-2 h-4 w-4" /> Guardar todos
+              </Button>
+            </div>
+          </div>
+
+          {/* Estadísticas rápidas */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-green-200 bg-gradient-to-br from-green-50 to-green-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-700/80 mb-1">Total Ingresos</p>
+                    <p className="text-2xl font-bold text-green-700">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalIncome)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <TrendingUp className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-red-200 bg-gradient-to-br from-red-50 to-red-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-red-700/80 mb-1">Total Gastos</p>
+                    <p className="text-2xl font-bold text-red-700">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalExpenses)}</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <TrendingDown className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={`border-2 ${netBalance >= 0 ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-red-200 bg-gradient-to-br from-red-50 to-red-50/50'}`}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Balance Neto</p>
+                    <p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(netBalance)}
+                    </p>
+                  </div>
+                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${netBalance >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                    <DollarSign className={`h-6 w-6 ${netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        <Card>
-          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <CardTitle>Ingresos</CardTitle>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Button onClick={() => addEmptyRow('income')} className="w-full sm:w-auto">
+        <Card className="border-green-100 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-green-50 to-green-50/50 border-b border-green-100">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-green-500 flex items-center justify-center">
+                  <TrendingUp className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-green-900">Ingresos</CardTitle>
+                  <p className="text-sm text-green-700/70 mt-0.5">{incomeRows.length} {incomeRows.length === 1 ? 'transacción' : 'transacciones'}</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => addEmptyRow('income')} 
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white shadow-md"
+              >
                 <Plus className="mr-2 h-4 w-4" /> Añadir ingreso
               </Button>
             </div>
@@ -348,15 +434,15 @@ const Transactions: React.FC = () => {
             <div className="overflow-x-auto -mx-2 sm:mx-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[120px]">Fecha</TableHead>
-                    <TableHead className="min-w-[120px]">Tipo</TableHead>
-                    <TableHead className="min-w-[150px]">Activo</TableHead>
-                    <TableHead className="min-w-[150px]">Pasivo</TableHead>
-                    <TableHead className="min-w-[150px]">Activo relacionado</TableHead>
-                    <TableHead className="min-w-[150px]">Categoría</TableHead>
-                    <TableHead className="text-right min-w-[120px]">Cantidad <span className="ml-1">€</span></TableHead>
-                    <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
+                  <TableRow className="hover:bg-transparent border-b-2">
+                    <TableHead className="min-w-[120px] font-semibold">Fecha</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Tipo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Activo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Pasivo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Activo relacionado</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Categoría</TableHead>
+                    <TableHead className="text-right min-w-[140px] font-semibold">Cantidad</TableHead>
+                    <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -379,14 +465,26 @@ const Transactions: React.FC = () => {
 
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <ArrowUpCircle className={r.type === 'income' ? 'text-green-600' : 'text-slate-400'} />
+                          <ArrowUpCircle className={`h-5 w-5 ${r.type === 'income' ? 'text-green-600' : 'text-slate-400'}`} />
                           <Select value={r.type ?? ''} onValueChange={(val: any) => updateRow(r.localId, { type: val as 'income' | 'expense' })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue placeholder="Tipo" />
+                            </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="income">Ingreso</SelectItem>
-                              <SelectItem value="expense">Gasto</SelectItem>
+                              <SelectItem value="income" className="text-green-700">Ingreso</SelectItem>
+                              <SelectItem value="expense" className="text-red-700">Gasto</SelectItem>
                             </SelectContent>
                           </Select>
+                          {r.isNew && (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
+                              Nuevo
+                            </Badge>
+                          )}
+                          {r.isEdited && !r.isNew && (
+                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                              Editado
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
 
@@ -432,21 +530,28 @@ const Transactions: React.FC = () => {
 
                         <TableCell className="text-right">
                         <div className="inline-flex items-center justify-end gap-2">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={r.amount}
-                            onChange={(e) => updateRow(r.localId, { amount: parseFloat(e.target.value || '0') })}
-                            className={`text-right font-medium ${r.type === 'income' ? 'text-green-700 bg-green-50/50' : ''}`}
-                            style={{ width: 120 }}
-                          />
-                          <span className="text-sm text-slate-600">€</span>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={r.amount}
+                              onChange={(e) => updateRow(r.localId, { amount: parseFloat(e.target.value || '0') })}
+                              className={`text-right font-semibold text-lg ${r.type === 'income' ? 'text-green-700 bg-green-50/70 border-green-200 focus:border-green-400' : 'text-red-700 bg-red-50/70 border-red-200 focus:border-red-400'}`}
+                              style={{ width: 140 }}
+                            />
+                          </div>
+                          <span className={`text-sm font-medium ${r.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>€</span>
                         </div>
                       </TableCell>
 
                       <TableCell className="text-center">
-                        <Button variant="ghost" size="sm" onClick={() => removeRow(r.localId)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => removeRow(r.localId)}
+                          className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -457,11 +562,22 @@ const Transactions: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <CardTitle>Gastos</CardTitle>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Button onClick={() => addEmptyRow('expense')} className="w-full sm:w-auto">
+        <Card className="border-red-100 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-red-50 to-red-50/50 border-b border-red-100">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-red-500 flex items-center justify-center">
+                  <TrendingDown className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-red-900">Gastos</CardTitle>
+                  <p className="text-sm text-red-700/70 mt-0.5">{expenseRows.length} {expenseRows.length === 1 ? 'transacción' : 'transacciones'}</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => addEmptyRow('expense')} 
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white shadow-md"
+              >
                 <Plus className="mr-2 h-4 w-4" /> Añadir gasto
               </Button>
             </div>
@@ -470,15 +586,15 @@ const Transactions: React.FC = () => {
             <div className="overflow-x-auto -mx-2 sm:mx-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[120px]">Fecha</TableHead>
-                    <TableHead className="min-w-[120px]">Tipo</TableHead>
-                    <TableHead className="min-w-[150px]">Activo</TableHead>
-                    <TableHead className="min-w-[150px]">Pasivo</TableHead>
-                    <TableHead className="min-w-[150px]">Activo relacionado</TableHead>
-                    <TableHead className="min-w-[150px]">Categoría</TableHead>
-                    <TableHead className="text-right min-w-[120px]">Cantidad <span className="ml-1">€</span></TableHead>
-                    <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
+                  <TableRow className="hover:bg-transparent border-b-2">
+                    <TableHead className="min-w-[120px] font-semibold">Fecha</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Tipo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Activo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Pasivo</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Activo relacionado</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Categoría</TableHead>
+                    <TableHead className="text-right min-w-[140px] font-semibold">Cantidad</TableHead>
+                    <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -501,14 +617,26 @@ const Transactions: React.FC = () => {
 
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <ArrowDownCircle className={r.type === 'expense' ? 'text-red-600' : 'text-slate-400'} />
+                          <ArrowDownCircle className={`h-5 w-5 ${r.type === 'expense' ? 'text-red-600' : 'text-slate-400'}`} />
                           <Select value={r.type ?? ''} onValueChange={(val: any) => updateRow(r.localId, { type: val as 'income' | 'expense' })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue placeholder="Tipo" />
+                            </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="income">Ingreso</SelectItem>
-                              <SelectItem value="expense">Gasto</SelectItem>
+                              <SelectItem value="income" className="text-green-700">Ingreso</SelectItem>
+                              <SelectItem value="expense" className="text-red-700">Gasto</SelectItem>
                             </SelectContent>
                           </Select>
+                          {r.isNew && (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
+                              Nuevo
+                            </Badge>
+                          )}
+                          {r.isEdited && !r.isNew && (
+                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                              Editado
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
 
@@ -567,8 +695,13 @@ const Transactions: React.FC = () => {
                       </TableCell>
 
                       <TableCell className="text-center">
-                        <Button variant="ghost" size="sm" onClick={() => removeRow(r.localId)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => removeRow(r.localId)}
+                          className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
