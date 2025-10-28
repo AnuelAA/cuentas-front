@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { resetPassword } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Wallet, Loader2 } from 'lucide-react';
+import { KeyRound, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const Login: React.FC = () => {
+const ResetPassword: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login, user } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,17 +25,29 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email || !password) {
+
+    if (!email || !newPassword) {
       toast.error('Por favor completa todos los campos');
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      toast.error('La contraseña debe tener al menos 4 caracteres');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('Las contraseñas no coinciden');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login({ email, password });
-    } catch (error) {
-      // Error handling is done in the AuthContext
+      await resetPassword({ email, newPassword });
+      toast.success('¡Contraseña restablecida exitosamente! Por favor inicia sesión');
+      navigate('/login');
+    } catch (error: any) {
+      toast.error(error.message || 'Error al restablecer la contraseña');
     } finally {
       setIsSubmitting(false);
     }
@@ -44,11 +58,11 @@ const Login: React.FC = () => {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Wallet className="h-6 w-6 text-primary-foreground" />
+            <KeyRound className="h-6 w-6 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-bold">FinanzasApp</CardTitle>
+          <CardTitle className="text-2xl font-bold">Restablecer contraseña</CardTitle>
           <CardDescription>
-            Ingresa tus credenciales para acceder a tu panel financiero
+            Ingresa tu email y tu nueva contraseña
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -66,15 +80,29 @@ const Login: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="newPassword">Nueva contraseña</Label>
               <Input
-                id="password"
+                id="newPassword"
                 type="password"
                 placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 disabled={isSubmitting}
                 required
+                minLength={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar nueva contraseña</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={isSubmitting}
+                required
+                minLength={4}
               />
             </div>
             <Button
@@ -85,31 +113,22 @@ const Login: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
+                  Restableciendo...
                 </>
               ) : (
-                'Iniciar sesión'
+                'Restablecer contraseña'
               )}
             </Button>
           </form>
-          <div className="mt-4 space-y-2 text-center text-sm text-muted-foreground">
+          <div className="mt-4 text-center text-sm text-muted-foreground">
             <p>
-              ¿No tienes una cuenta?{' '}
+              ¿Recordaste tu contraseña?{' '}
               <button
                 type="button"
-                onClick={() => navigate('/signup')}
+                onClick={() => navigate('/login')}
                 className="text-primary hover:underline font-medium"
               >
-                Crear cuenta
-              </button>
-            </p>
-            <p>
-              <button
-                type="button"
-                onClick={() => navigate('/reset-password')}
-                className="text-primary hover:underline font-medium"
-              >
-                ¿Olvidaste tu contraseña?
+                Iniciar sesión
               </button>
             </p>
           </div>
@@ -119,4 +138,5 @@ const Login: React.FC = () => {
   );
 };
 
-export default Login;
+export default ResetPassword;
+

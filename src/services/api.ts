@@ -4,6 +4,7 @@ import type {
   LoginRequest,
   LoginResponse,
   CreateUserRequest,
+  ResetPasswordRequest,
   Asset,
   AssetPerformance,
   Liability,
@@ -113,6 +114,36 @@ export const createUser = async (userData: CreateUserRequest): Promise<User> => 
       }
       const errorMessage = error.response?.data?.message || error.response?.data || error.message;
       throw new Error(`Error al crear el usuario: ${errorMessage}`);
+    }
+    throw error;
+  }
+};
+
+export const resetPassword = async (resetData: ResetPasswordRequest): Promise<void> => {
+  try {
+    // El endpoint de reset password es público, no necesita token
+    await axios.post(
+      `${API_BASE_URL}/auth/reset-password`,
+      {
+        email: resetData.email,
+        newPassword: resetData.newPassword,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 404) {
+        throw new Error('Usuario no encontrado');
+      }
+      if (error.response?.status === 400) {
+        throw new Error('Datos inválidos. Por favor verifica el email y la contraseña.');
+      }
+      const errorMessage = error.response?.data?.message || error.response?.data || error.message;
+      throw new Error(`Error al resetear la contraseña: ${errorMessage}`);
     }
     throw error;
   }

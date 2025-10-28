@@ -25,6 +25,11 @@ export interface CreateUserRequest {
   password: string;
 }
 
+export interface ResetPasswordRequest {
+  email: string;
+  newPassword: string;
+}
+
 export interface Asset {
   assetId: number;
   userId: number;
