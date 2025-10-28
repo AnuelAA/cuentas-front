@@ -57,8 +57,8 @@ const ExcelImportExport: React.FC = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight">Excel - Importar / Exportar</h2>
+      <div className="space-y-6 px-2 sm:px-0">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Excel - Importar / Exportar</h2>
 
         <Card>
           <CardHeader>
@@ -90,14 +90,14 @@ const ExcelImportExport: React.FC = () => {
                 />
               </div>
 
-              <div className="flex gap-2">
-                <Button type="submit" disabled={loading}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button type="submit" disabled={loading} className="flex-1 sm:flex-none">
                   {loading ? 'Subiendo...' : 'Subir e Importar'}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => { setFile(null); setYear(String(new Date().getFullYear())); }}>
+                <Button type="button" variant="outline" onClick={() => { setFile(null); setYear(String(new Date().getFullYear())); }} className="flex-1 sm:flex-none">
                   Limpiar
                 </Button>
-                <Button type="button" onClick={handleExport} disabled={exporting}>
+                <Button type="button" onClick={handleExport} disabled={exporting} className="flex-1 sm:flex-none">
                   {exporting ? 'Generando...' : 'Exportar'}
                 </Button>
               </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { createUser } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,11 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Wallet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const Login: React.FC = () => {
+const SignUp: React.FC = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login, user } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,17 +26,29 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email || !password) {
+
+    if (!name || !email || !password) {
       toast.error('Por favor completa todos los campos');
+      return;
+    }
+
+    if (password.length < 4) {
+      toast.error('La contraseña debe tener al menos 4 caracteres');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error('Las contraseñas no coinciden');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login({ email, password });
-    } catch (error) {
-      // Error handling is done in the AuthContext
+      await createUser({ name, email, password });
+      toast.success('¡Cuenta creada exitosamente! Por favor inicia sesión');
+      navigate('/login');
+    } catch (error: any) {
+      toast.error(error.message || 'Error al crear la cuenta');
     } finally {
       setIsSubmitting(false);
     }
@@ -46,13 +61,25 @@ const Login: React.FC = () => {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
             <Wallet className="h-6 w-6 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-bold">FinanzasApp</CardTitle>
+          <CardTitle className="text-2xl font-bold">Crear cuenta</CardTitle>
           <CardDescription>
-            Ingresa tus credenciales para acceder a tu panel financiero
+            Completa el formulario para crear tu cuenta en FinanzasApp
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Tu nombre"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isSubmitting}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Correo electrónico</Label>
               <Input
@@ -75,6 +102,20 @@ const Login: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
                 required
+                minLength={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={isSubmitting}
+                required
+                minLength={4}
               />
             </div>
             <Button
@@ -85,23 +126,22 @@ const Login: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
+                  Creando cuenta...
                 </>
               ) : (
-                'Iniciar sesión'
+                'Crear cuenta'
               )}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">
             <p>
-              ¿No tienes una cuenta?{' '}
-              <button
-                type="button"
-                onClick={() => navigate('/signup')}
+              ¿Ya tienes una cuenta?{' '}
+              <Link
+                to="/login"
                 className="text-primary hover:underline font-medium"
               >
-                Crear cuenta
-              </button>
+                Iniciar sesión
+              </Link>
             </p>
           </div>
         </CardContent>
@@ -110,4 +150,5 @@ const Login: React.FC = () => {
   );
 };
 
-export default Login;
+export default SignUp;
+

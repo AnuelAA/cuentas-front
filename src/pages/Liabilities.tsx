@@ -21,9 +21,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Eye, Save } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { toast } from 'sonner';
+import { MonthNavigator } from '@/components/MonthNavigator';
+import { startOfMonth, format as formatDate, parseISO as parseISODate } from 'date-fns';
+import { createLiability, updateLiability, addLiabilitySnapshot } from '@/services/api';
 
 const Liabilities: React.FC = () => {
   const { user } = useAuth();
@@ -34,7 +39,14 @@ const Liabilities: React.FC = () => {
   const [liabilityTransactions, setLiabilityTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-
+    const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
+    const [liabilityModalOpen, setLiabilityModalOpen] = useState(false);
+    const [editingLiability, setEditingLiability] = useState<Liability | null>(null);
+    const [liabilityForm, setLiabilityForm] = useState<{ name: string; principalAmount: number; outstandingBalance: number }>({
+      name: '',
+      principalAmount: 0,
+      outstandingBalance: 0,
+    });
   // Helper: obtener último snapshot de liabilityValues por valuationDate
   const getLatestLiabilitySnapshot = (liability: Liability) => {
     if (!Array.isArray(liability.liabilityValues) || liability.liabilityValues.length === 0) {
@@ -64,14 +76,18 @@ const Liabilities: React.FC = () => {
   };
 
   const fetchLiabilities = async () => {
-    if (!user?.userId) return;
+    if (!user?.userId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await getLiabilities(user.userId);
-      setLiabilities(data);
+      setLiabilities(data || []);
     } catch (error) {
       console.error('Error fetching liabilities:', error);
       toast.error('Error al cargar los pasivos');
+      setLiabilities([]);
     } finally {
       setLoading(false);
     }
@@ -86,6 +102,14 @@ const Liabilities: React.FC = () => {
       console.error('Error fetching categories:', error);
     }
   };
+
+  useEffect(() => {
+    if (user?.userId) {
+      fetchLiabilities();
+      fetchCategories();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleViewDetails = async (liability: Liability) => {
     if (!user?.userId) return;
@@ -111,10 +135,62 @@ const Liabilities: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchLiabilities();
-    fetchCategories();
-  }, [user]);
+    useEffect(() => {
+      if (!liabilities || liabilities.length === 0) return;
+      let latest: Date | null = null;
+      liabilities.forEach(l => {
+        if (Array.isArray(l.liabilityValues)) {
+          l.liabilityValues.forEach(v => {
+            try {
+              const d = parseISODate(v.valuationDate);
+              if (!isNaN(d.getTime())) {
+                if (!latest || d.getTime() > latest.getTime()) latest = d;
+              }
+            } catch {}
+          });
+        }
+      });
+      if (latest) {
+        const defaultMonth = startOfMonth(new Date());
+        const inSelectedMonth = liabilities.some(l =>
+          (l.liabilityValues || []).some(v => startOfMonth(parseISODate(v.valuationDate)).getTime() === startOfMonth(defaultMonth).getTime())
+        );
+        if (!inSelectedMonth) {
+          setSelectedMonth(startOfMonth(latest));
+        }
+      }
+    }, [liabilities]);
+    const openLiabilityModal = (liability: Liability | null) => {
+      setEditingLiability(liability);
+      setLiabilityForm({
+        name: liability?.name ?? '',
+        principalAmount: Number(liability?.principalAmount ?? 0),
+        outstandingBalance: Number(liability?.outstandingBalance ?? 0),
+      });
+      setLiabilityModalOpen(true);
+    };
+
+    const saveLiabilityForMonth = async () => {
+      if (!user?.userId) return;
+      try {
+        let saved: Liability;
+        if (editingLiability) {
+          saved = await updateLiability(user.userId, editingLiability.liabilityId, { name: liabilityForm.name, principalAmount: liabilityForm.principalAmount });
+        } else {
+          saved = await createLiability(user.userId, { name: liabilityForm.name, principalAmount: liabilityForm.principalAmount, outstandingBalance: liabilityForm.outstandingBalance });
+        }
+        await addLiabilitySnapshot(user.userId, saved.liabilityId, {
+          valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
+          outstandingBalance: liabilityForm.outstandingBalance,
+        });
+        toast.success('Pasivo guardado y snapshot añadido');
+        setLiabilityModalOpen(false);
+        fetchLiabilities();
+      } catch (err) {
+        console.error(err);
+        toast.error('Error guardando pasivo');
+      }
+    };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-ES', {
@@ -148,10 +224,16 @@ const Liabilities: React.FC = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold tracking-tight">Pasivos</h2>
-          <Button onClick={fetchLiabilities}>Actualizar</Button>
+      <div className="space-y-6 px-2 sm:px-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Pasivos</h2>
+          <div className="flex-1">
+            <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button onClick={() => fetchLiabilities()} variant="outline" className="flex-1 sm:flex-none">Actualizar</Button>
+            <Button onClick={() => openLiabilityModal(null)} className="flex-1 sm:flex-none">Nuevo pasivo</Button>
+          </div>
         </div>
 
         <Card>
@@ -162,16 +244,16 @@ const Liabilities: React.FC = () => {
             {liabilities.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No hay pasivos registrados</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-2 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-right">Principal</TableHead>
-                      <TableHead className="text-right">Saldo actual</TableHead>
-                      <TableHead className="text-right">Fin del snapshot</TableHead>
-                      <TableHead className="text-center">Progreso</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
+                      <TableHead className="min-w-[150px]">Nombre</TableHead>
+                      <TableHead className="text-right min-w-[120px]">Principal</TableHead>
+                      <TableHead className="text-right min-w-[120px]">Saldo actual</TableHead>
+                      <TableHead className="text-right min-w-[140px]">Fin del snapshot</TableHead>
+                      <TableHead className="text-center min-w-[200px]">Progreso</TableHead>
+                      <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -208,9 +290,27 @@ const Liabilities: React.FC = () => {
             )}
           </CardContent>
         </Card>
-
+        <Dialog open={liabilityModalOpen} onOpenChange={setLiabilityModalOpen}>
+          <DialogContent className="max-w-lg w-[95vw] sm:w-full">
+            <DialogHeader>
+              <DialogTitle>{editingLiability ? 'Editar pasivo' : 'Nuevo pasivo'}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <Label>Nombre</Label>
+              <Input value={liabilityForm.name} onChange={(e) => setLiabilityForm(f => ({ ...f, name: e.target.value }))} />
+              <Label>Principal</Label>
+              <Input type="number" value={String(liabilityForm.principalAmount)} onChange={(e) => setLiabilityForm(f => ({ ...f, principalAmount: Number(e.target.value || 0) }))} />
+              <Label>Saldo pendiente (para snapshot del mes)</Label>
+              <Input type="number" value={String(liabilityForm.outstandingBalance)} onChange={(e) => setLiabilityForm(f => ({ ...f, outstandingBalance: Number(e.target.value || 0) }))} />
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setLiabilityModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                <Button onClick={saveLiabilityForMonth} className="w-full sm:w-auto"><Save className="h-4 w-4 mr-2" /> Guardar y añadir snapshot ({formatDate(selectedMonth, 'MMMM yyyy')})</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Detalles del Pasivo</DialogTitle>
             </DialogHeader>
@@ -225,7 +325,7 @@ const Liabilities: React.FC = () => {
                     <p className="text-sm text-muted-foreground">Nombre</p>
                     <p className="text-lg font-semibold">{selectedLiabilityData.name}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Principal Pagado</p>
                       <p className="text-lg font-semibold text-success">
@@ -239,7 +339,7 @@ const Liabilities: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
                       <p className="text-lg font-semibold text-destructive">

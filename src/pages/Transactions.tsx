@@ -77,10 +77,10 @@ const Transactions: React.FC = () => {
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
 
-  const findByNameId = <T extends { name?: string }, K extends keyof T>(
-    list: T[],
-    name?: string,
-    idKey: K
+  const findByNameId = (
+    list: Array<{ name?: string; [key: string]: any }>,
+    name: string | undefined,
+    idKey: string
   ): number | undefined => {
     if (!name) return undefined;
     const needle = name.trim().toLowerCase();
@@ -170,11 +170,11 @@ const Transactions: React.FC = () => {
       localId: `existing-${t.transactionId}`,
       isNew: false,
       transactionId: t.transactionId,
-      categoryId: t.categoryId,
-      type: (t as any).type ?? undefined,
-      assetId: t.assetId,
-      relatedAssetId: t.relatedAssetId,
-      liabilityId: t.liabilityId,
+      categoryId: t.categoryId ?? undefined,
+      type: t.type ?? undefined,
+      assetId: t.assetId ?? undefined,
+      relatedAssetId: t.relatedAssetId ?? undefined,
+      liabilityId: t.liabilityId ?? undefined,
       transactionDate: t.transactionDate,
       description: t.description ?? '',
       amount: Math.abs(t.amount),
@@ -315,44 +315,48 @@ const Transactions: React.FC = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold tracking-tight">Transacciones</h2>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <Label className="mr-2">Desde</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              <Label className="mx-2">Hasta</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+      <div className="space-y-6 px-2 sm:px-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Transacciones</h2>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm whitespace-nowrap">Desde</Label>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="flex-1 sm:w-auto" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm whitespace-nowrap">Hasta</Label>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="flex-1 sm:w-auto" />
+              </div>
             </div>
-            <Button variant="secondary" onClick={handleSaveAll}>
+            <Button variant="secondary" onClick={handleSaveAll} className="w-full sm:w-auto">
               <Save className="mr-2 h-4 w-4" /> Guardar
             </Button>
           </div>
         </div>
 
         <Card>
-          <CardHeader className="flex items-center justify-between">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <CardTitle>Ingresos</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => addEmptyRow('income')}>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button onClick={() => addEmptyRow('income')} className="w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" /> Añadir ingreso
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto -mx-2 sm:mx-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Activo</TableHead>
-                    <TableHead>Pasivo</TableHead>
-                    <TableHead>Activo relacionado</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead className="text-right">Cantidad <span className="ml-1">€</span></TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
+                    <TableHead className="min-w-[120px]">Fecha</TableHead>
+                    <TableHead className="min-w-[120px]">Tipo</TableHead>
+                    <TableHead className="min-w-[150px]">Activo</TableHead>
+                    <TableHead className="min-w-[150px]">Pasivo</TableHead>
+                    <TableHead className="min-w-[150px]">Activo relacionado</TableHead>
+                    <TableHead className="min-w-[150px]">Categoría</TableHead>
+                    <TableHead className="text-right min-w-[120px]">Cantidad <span className="ml-1">€</span></TableHead>
+                    <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -389,37 +393,37 @@ const Transactions: React.FC = () => {
                       <TableCell>
                         <input
                           list="assets-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.assetName ?? assets.find(a => a.assetId === r.assetId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { assetName: e.target.value, assetId: undefined })}
-                          placeholder="Activo (autocompletable)"
+                          placeholder="Activo"
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="liabilities-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.liabilityName ?? liabilities.find(l => l.liabilityId === r.liabilityId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { liabilityName: e.target.value, liabilityId: undefined })}
-                          placeholder="Pasivo (autocompletable)"
+                          placeholder="Pasivo"
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="assets-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.relatedAssetName ?? assets.find(a => a.assetId === r.relatedAssetId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { relatedAssetName: e.target.value, relatedAssetId: undefined })}
-                          placeholder="Activo relacionado"
+                          placeholder="Activo rel."
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="categories-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.categoryName ?? categories.find(c => c.categoryId === r.categoryId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { categoryName: e.target.value, categoryId: undefined })}
                           placeholder="Categoría"
@@ -454,27 +458,27 @@ const Transactions: React.FC = () => {
         </Card>
 
         <Card>
-          <CardHeader className="flex items-center justify-between">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <CardTitle>Gastos</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => addEmptyRow('expense')}>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button onClick={() => addEmptyRow('expense')} className="w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" /> Añadir gasto
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto -mx-2 sm:mx-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Activo</TableHead>
-                    <TableHead>Pasivo</TableHead>
-                    <TableHead>Activo relacionado</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead className="text-right">Cantidad <span className="ml-1">€</span></TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
+                    <TableHead className="min-w-[120px]">Fecha</TableHead>
+                    <TableHead className="min-w-[120px]">Tipo</TableHead>
+                    <TableHead className="min-w-[150px]">Activo</TableHead>
+                    <TableHead className="min-w-[150px]">Pasivo</TableHead>
+                    <TableHead className="min-w-[150px]">Activo relacionado</TableHead>
+                    <TableHead className="min-w-[150px]">Categoría</TableHead>
+                    <TableHead className="text-right min-w-[120px]">Cantidad <span className="ml-1">€</span></TableHead>
+                    <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -511,37 +515,37 @@ const Transactions: React.FC = () => {
                       <TableCell>
                         <input
                           list="assets-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.assetName ?? assets.find(a => a.assetId === r.assetId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { assetName: e.target.value, assetId: undefined })}
-                          placeholder="Activo (autocompletable)"
+                          placeholder="Activo"
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="liabilities-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.liabilityName ?? liabilities.find(l => l.liabilityId === r.liabilityId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { liabilityName: e.target.value, liabilityId: undefined })}
-                          placeholder="Pasivo (autocompletable)"
+                          placeholder="Pasivo"
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="assets-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.relatedAssetName ?? assets.find(a => a.assetId === r.relatedAssetId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { relatedAssetName: e.target.value, relatedAssetId: undefined })}
-                          placeholder="Activo relacionado"
+                          placeholder="Activo rel."
                         />
                       </TableCell>
 
                       <TableCell>
                         <input
                           list="categories-list"
-                          className="input"
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
                           value={r.categoryName ?? categories.find(c => c.categoryId === r.categoryId)?.name ?? ''}
                           onChange={(e) => updateRow(r.localId, { categoryName: e.target.value, categoryId: undefined })}
                           placeholder="Categoría"

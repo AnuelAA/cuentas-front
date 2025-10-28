@@ -2,6 +2,7 @@ import axios from 'axios';
 import type {
   User,
   LoginRequest,
+  CreateUserRequest,
   Asset,
   AssetPerformance,
   Liability,
@@ -57,6 +58,23 @@ export const login = async (credentials: LoginRequest): Promise<User> => {
   } catch (error) {
     if (axios.isAxiosError(error)) {
       throw new Error(`Error de conexión con la API: ${error.message}`);
+    }
+    throw error;
+  }
+};
+
+export const createUser = async (userData: CreateUserRequest): Promise<User> => {
+  try {
+    const response = await api.post<User>('/users', {
+      name: userData.name,
+      email: userData.email,
+      password: userData.password,
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const errorMessage = error.response?.data?.message || error.response?.data || error.message;
+      throw new Error(`Error al crear el usuario: ${errorMessage}`);
     }
     throw error;
   }
@@ -148,7 +166,17 @@ export const createTransaction = async (
   userId: number,
   transaction: CreateTransactionRequest
 ): Promise<Transaction> => {
-  const body = { ...transaction, amount: Math.abs(transaction.amount) }; // asegurar positivo
+  const body = {
+    userId: userId,
+    categoryId: transaction.categoryId ?? null,
+    assetId: transaction.assetId ?? null,
+    relatedAssetId: transaction.relatedAssetId ?? null,
+    liabilityId: transaction.liabilityId ?? null,
+    amount: Math.abs(transaction.amount),
+    type: transaction.type ?? null,
+    transactionDate: transaction.transactionDate,
+    description: transaction.description ?? null,
+  };
   const response = await api.post<Transaction>(
     `/users/${userId}/transactions`,
     body
@@ -159,19 +187,19 @@ export const createTransaction = async (
 export const updateTransaction = async (
   userId: number,
   transactionId: number,
-  transaction: Partial<CreateTransactionRequest> & { transactionId?: number; userId?: number }
+  transaction: Partial<CreateTransactionRequest>
 ): Promise<Transaction> => {
   const body = {
     transactionId: transactionId,
     userId: userId,
-    categoryId: transaction.categoryId ?? null,
-    assetId: transaction.assetId ?? null,
-    relatedAssetId: transaction.relatedAssetId ?? null,
-    liabilityId: transaction.liabilityId ?? null,
-    amount: Math.abs(transaction.amount ?? 0),
-    type: transaction.type ?? null,
-    transactionDate: transaction.transactionDate ?? null,
-    description: transaction.description ?? null,
+    categoryId: transaction.categoryId !== undefined ? transaction.categoryId : null,
+    assetId: transaction.assetId !== undefined ? transaction.assetId : null,
+    relatedAssetId: transaction.relatedAssetId !== undefined ? transaction.relatedAssetId : null,
+    liabilityId: transaction.liabilityId !== undefined ? transaction.liabilityId : null,
+    amount: transaction.amount !== undefined ? Math.abs(transaction.amount) : 0,
+    type: transaction.type !== undefined ? transaction.type : null,
+    transactionDate: transaction.transactionDate || null,
+    description: transaction.description !== undefined ? (transaction.description || null) : null,
   };
 
   const response = await api.put<Transaction>(`/users/${userId}/transactions/${transactionId}`, body);
@@ -296,6 +324,59 @@ export const exportExcel = async (
   if (m && m[1]) filename = decodeURIComponent(m[1].replace(/["']/g, ''));
 
   return { blob: response.data as Blob, filename };
+};
+// ----- Assets: crear/actualizar/valuación (stubs) -----
+export const createAsset = async (
+  userId: number,
+  payload: { name: string; acquisitionValue?: number; currentValue?: number }
+): Promise<Asset> => {
+  const response = await api.post<Asset>(`/users/${userId}/assets`, payload);
+  return response.data;
+};
+
+export const updateAsset = async (
+  userId: number,
+  assetId: number,
+  payload: Partial<{ name: string; acquisitionValue?: number; currentValue?: number }>
+): Promise<Asset> => {
+  const response = await api.put<Asset>(`/users/${userId}/assets/${assetId}`, payload);
+  return response.data;
+};
+
+export const addAssetValuation = async (
+  userId: number,
+  assetId: number,
+  payload: { valuationDate: string; currentValue: number; acquisitionValue?: number }
+): Promise<any> => {
+  const response = await api.post(`/users/${userId}/assets/${assetId}/valuations`, payload);
+  return response.data;
+};
+
+// ----- Liabilities: crear/actualizar/snapshot (stubs) -----
+export const createLiability = async (
+  userId: number,
+  payload: { name: string; principalAmount?: number; outstandingBalance?: number }
+): Promise<Liability> => {
+  const response = await api.post<Liability>(`/users/${userId}/liabilities`, payload);
+  return response.data;
+};
+
+export const updateLiability = async (
+  userId: number,
+  liabilityId: number,
+  payload: Partial<{ name: string; principalAmount?: number; outstandingBalance?: number }>
+): Promise<Liability> => {
+  const response = await api.put<Liability>(`/users/${userId}/liabilities/${liabilityId}`, payload);
+  return response.data;
+};
+
+export const addLiabilitySnapshot = async (
+  userId: number,
+  liabilityId: number,
+  payload: { valuationDate: string; outstandingBalance: number }
+): Promise<any> => {
+  const response = await api.post(`/users/${userId}/liabilities/${liabilityId}/values`, payload);
+  return response.data;
 };
 
 export default api;

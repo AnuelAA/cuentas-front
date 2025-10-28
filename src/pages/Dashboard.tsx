@@ -425,23 +425,23 @@ const Dashboard: React.FC = () => {
   // --- Render ---
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-6 px-2 sm:px-0">
         {/* Header: título + filtros de rango */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard Financiero</h2>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1 text-sm" />
-              <span className="text-sm text-muted-foreground">-</span>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1 text-sm" />
-              <Button onClick={fetchDashboard} size="sm">Actualizar</Button>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard Financiero</h2>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Calendar className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-md border border-input bg-background px-2 sm:px-3 py-1 text-sm w-full sm:w-auto" />
+              <span className="text-sm text-muted-foreground hidden sm:inline">-</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-md border border-input bg-background px-2 sm:px-3 py-1 text-sm w-full sm:w-auto" />
+              <Button onClick={fetchDashboard} size="sm" className="w-full sm:w-auto">Actualizar</Button>
             </div>
 
-            <div className="ml-4 flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setLastMonths(6)}>Últimos 6 meses</Button>
-              <Button size="sm" variant="outline" onClick={() => setLastMonths(12)}>Últimos 12 meses</Button>
-              <Button size="sm" variant="outline" onClick={setAllTime}>Todo el tiempo</Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="outline" onClick={() => setLastMonths(6)} className="text-xs sm:text-sm">6 meses</Button>
+              <Button size="sm" variant="outline" onClick={() => setLastMonths(12)} className="text-xs sm:text-sm">12 meses</Button>
+              <Button size="sm" variant="outline" onClick={setAllTime} className="text-xs sm:text-sm">Todo</Button>
             </div>
           </div>
         </div>
@@ -460,7 +460,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Gráficos: Ingresos vs Gastos + breakdowns */}
-        <div className="grid gap-4 md:grid-cols-3 mb-4">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-4">
           {/* Ingresos vs Gastos */}
           <Card>
             <CardHeader><CardTitle>Ingresos vs Gastos</CardTitle></CardHeader>
@@ -538,10 +538,12 @@ const Dashboard: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="overflow-visible">
-            <div className="mb-3 flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" onClick={selectAll}>Seleccionar todo</Button>
-              <Button size="sm" variant="outline" onClick={deselectAll}>Deseleccionar todo</Button>
-              <div className="ml-2 flex items-center gap-3 flex-wrap">
+            <div className="mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={selectAll} className="text-xs">Todo</Button>
+                <Button size="sm" variant="outline" onClick={deselectAll} className="text-xs">Ninguno</Button>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 {(assetsInfo || []).map(info => (
                   <label key={info.key} className="inline-flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={!!selectedKeys[info.key]} onChange={() => toggleKey(info.key)} />
@@ -552,9 +554,9 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="h-[420px] overflow-visible -ml-8">
+            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8">
               <ResponsiveContainer width="100%" height="100%" style={{ overflow: 'visible' }}>
-                <RechartsLineChart data={chartMonths} margin={{ top: 20, right: 40, left: 8, bottom: 20 }}>
+                <RechartsLineChart data={chartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis type="number" domain={buildDomain(assetsMax)} tickFormatter={(v) => formatCurrencyNoCents(Number(v))} tick={{ fontSize: 12 }} />
@@ -579,10 +581,12 @@ const Dashboard: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="overflow-visible">
-            <div className="mb-3 flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="outline" onClick={selectAllLiabilities}>Seleccionar todo</Button>
-              <Button size="sm" variant="outline" onClick={deselectAllLiabilities}>Deseleccionar todo</Button>
-              <div className="ml-2 flex items-center gap-3 flex-wrap">
+            <div className="mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={selectAllLiabilities} className="text-xs">Todo</Button>
+                <Button size="sm" variant="outline" onClick={deselectAllLiabilities} className="text-xs">Ninguno</Button>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 {(liabilitiesInfo || []).map(info => (
                   <label key={info.key} className="inline-flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={!!selectedLiabilityKeys[info.key]} onChange={() => toggleLiabilityKey(info.key)} />
@@ -593,9 +597,9 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="h-[420px] overflow-visible -ml-8">
+            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8">
               <ResponsiveContainer width="100%" height="100%" style={{ overflow: 'visible' }}>
-                <RechartsLineChart data={liabChartMonths} margin={{ top: 20, right: 40, left: 8, bottom: 20 }}>
+                <RechartsLineChart data={liabChartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis type="number" domain={buildDomain(liabilitiesMax)} tickFormatter={(v) => formatCurrencyNoCents(Number(v))} tick={{ fontSize: 12 }} />

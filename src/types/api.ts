@@ -12,6 +12,12 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
 export interface Asset {
   assetId: number;
   userId: number;
@@ -21,6 +27,11 @@ export interface Asset {
   acquisitionDate?: string;
   acquisitionValue: number;
   currentValue: number;
+  assetValues?: Array<{
+    valuationDate: string;
+    currentValue: number;
+    acquisitionValue?: number;
+  }>;
 }
 
 export interface AssetPerformance {
@@ -43,6 +54,11 @@ export interface Liability {
   outstandingBalance: number;
   createdAt?: string;
   updatedAt?: string;
+  liabilityValues?: Array<{
+    valuationDate: string;
+    outstandingBalance: number;
+    endDate?: string;
+  }>;
 }
 
 export interface LiabilityProgress {
@@ -56,16 +72,16 @@ export interface LiabilityProgress {
 export interface Transaction {
   transactionId: number;
   userId: number;
-  categoryId?: number;
-  assetId?: number;
-  relatedAssetId?: number;
-  liabilityId?: number;
+  categoryId?: number | null;
+  assetId?: number | null;
+  relatedAssetId?: number | null;
+  liabilityId?: number | null;
   amount: number;
   transactionDate: string;
-  description: string;
+  description?: string | null;
   type?: 'income' | 'expense';
   createdAt?: string;
-  updatedAt?: string;
+  updatedAt?: string | null;
 }
 
 export interface Category {
@@ -88,18 +104,18 @@ export interface DashboardMetrics {
 
 export interface CreateTransactionRequest {
   userId?: number;
-  categoryId?: number;
+  categoryId?: number | null;
   categoryName?: string; // helper for UI when user types a name that doesn't exist
-  assetId?: number;
+  assetId?: number | null;
   assetName?: string;
-  relatedAssetId?: number;
+  relatedAssetId?: number | null;
   relatedAssetName?: string;
-  liabilityId?: number;
+  liabilityId?: number | null;
   liabilityName?: string;
-  type?: 'income' | 'expense';
+  type?: 'income' | 'expense' | null;
   amount: number;
   transactionDate: string;
-  description: string;
+  description?: string | null;
 }
 
 export interface MonthlyRoi {

@@ -132,7 +132,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <h1 className="text-lg font-semibold">Panel Financiero</h1>
             </div>
           </header>
-          <div className="p-6">{children}</div>
+          <div className="p-2 sm:p-4 md:p-6">{children}</div>
         </main>
       </div>
       {/* Chat bot fijo visible en todas las páginas */}

@@ -20,9 +20,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, Eye } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { TrendingUp, TrendingDown, Eye, Save } from 'lucide-react';
 import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
+import { MonthNavigator } from '@/components/MonthNavigator';
+import { startOfMonth, format as formatDate } from 'date-fns';
+import { createAsset, updateAsset, addAssetValuation } from '@/services/api';
 
 const Assets: React.FC = () => {
   const { user } = useAuth();
@@ -33,7 +38,14 @@ const Assets: React.FC = () => {
   const [assetTransactions, setAssetTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-
+    const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
+    const [assetModalOpen, setAssetModalOpen] = useState(false);
+    const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+    const [assetForm, setAssetForm] = useState<{ name: string; acquisitionValue: number; currentValue: number }>({
+      name: '',
+      acquisitionValue: 0,
+      currentValue: 0,
+    });
   // Obtiene el assetValue más reciente (valor + fecha)
   const getLatestAssetValue = (asset: Asset): { value: number; date: Date | null } => {
     if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
@@ -63,14 +75,18 @@ const Assets: React.FC = () => {
   };
 
   const fetchAssets = async () => {
-    if (!user?.userId) return;
+    if (!user?.userId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const data = await getAssets(user.userId);
-      setAssets(data);
+      setAssets(data || []);
     } catch (error) {
       console.error('Error fetching assets:', error);
       toast.error('Error al cargar los activos');
+      setAssets([]);
     } finally {
       setLoading(false);
     }
@@ -85,6 +101,14 @@ const Assets: React.FC = () => {
       console.error('Error fetching categories:', error);
     }
   };
+
+  useEffect(() => {
+    if (user?.userId) {
+      fetchAssets();
+      fetchCategories();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleViewDetails = async (asset: Asset) => {
     if (!user?.userId) return;
@@ -105,11 +129,63 @@ const Assets: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchAssets();
-    fetchCategories();
-  }, [user]);
+    useEffect(() => {
+      if (!assets || assets.length === 0) return;
+      let latest: Date | null = null;
+      assets.forEach(a => {
+        if (Array.isArray(a.assetValues)) {
+          a.assetValues.forEach(v => {
+            try {
+              const d = parseISO(v.valuationDate);
+              if (!isNaN(d.getTime())) {
+                if (!latest || d.getTime() > latest.getTime()) latest = d;
+              }
+            } catch {}
+          });
+        }
+      });
+      if (latest) {
+        const defaultMonth = startOfMonth(new Date());
+        const inSelectedMonth = assets.some(a =>
+          (a.assetValues || []).some(v => startOfMonth(parseISO(v.valuationDate)).getTime() === startOfMonth(defaultMonth).getTime())
+        );
+        if (!inSelectedMonth) {
+          setSelectedMonth(startOfMonth(latest));
+        }
+      }
+    }, [assets]);
+    const openAssetModal = (asset: Asset | null) => {
+      setEditingAsset(asset);
+      setAssetForm({
+        name: asset?.name ?? '',
+        acquisitionValue: Number(asset?.acquisitionValue ?? 0),
+        currentValue: Number(asset?.currentValue ?? 0),
+      });
+      setAssetModalOpen(true);
+    };
 
+    const saveAssetForMonth = async () => {
+      if (!user?.userId) return;
+      try {
+        let saved: Asset;
+        if (editingAsset) {
+          saved = await updateAsset(user.userId, editingAsset.assetId, { name: assetForm.name, acquisitionValue: assetForm.acquisitionValue });
+        } else {
+          saved = await createAsset(user.userId, { name: assetForm.name, acquisitionValue: assetForm.acquisitionValue, currentValue: assetForm.currentValue });
+        }
+        await addAssetValuation(user.userId, saved.assetId, {
+          valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
+          currentValue: assetForm.currentValue,
+          acquisitionValue: assetForm.acquisitionValue,
+        });
+        toast.success('Activo guardado y valoración añadida');
+        setAssetModalOpen(false);
+        fetchAssets();
+      } catch (err) {
+        console.error(err);
+        toast.error('Error guardando activo');
+      }
+    };
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
@@ -141,10 +217,16 @@ const Assets: React.FC = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold tracking-tight">Activos</h2>
-          <Button onClick={fetchAssets}>Actualizar</Button>
+      <div className="space-y-6 px-2 sm:px-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Activos</h2>
+          <div className="flex-1">
+            <MonthNavigator month={selectedMonth} onChange={setSelectedMonth} />
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button onClick={() => fetchAssets()} variant="outline" className="flex-1 sm:flex-none">Actualizar</Button>
+            <Button onClick={() => openAssetModal(null)} className="flex-1 sm:flex-none">Nuevo activo</Button>
+          </div>
         </div>
 
         <Card>
@@ -157,16 +239,16 @@ const Assets: React.FC = () => {
                 No hay activos registrados
               </p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-2 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-right">Valor Adquisición</TableHead>
-                      <TableHead className="text-right">Valor Actual</TableHead>
-                      <TableHead className="text-right">ROI</TableHead>
-                      <TableHead className="text-right">Rentabilidad anual</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
+                      <TableHead className="min-w-[150px]">Nombre</TableHead>
+                      <TableHead className="text-right min-w-[140px]">Valor Adquisición</TableHead>
+                      <TableHead className="text-right min-w-[120px]">Valor Actual</TableHead>
+                      <TableHead className="text-right min-w-[100px]">ROI</TableHead>
+                      <TableHead className="text-right min-w-[140px]">Rentabilidad anual</TableHead>
+                      <TableHead className="text-center min-w-[80px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -249,9 +331,27 @@ const Assets: React.FC = () => {
             )}
           </CardContent>
         </Card>
-
+        <Dialog open={assetModalOpen} onOpenChange={setAssetModalOpen}>
+          <DialogContent className="max-w-lg w-[95vw] sm:w-full">
+            <DialogHeader>
+              <DialogTitle>{editingAsset ? 'Editar activo' : 'Nuevo activo'}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <Label>Nombre</Label>
+              <Input value={assetForm.name} onChange={(e) => setAssetForm(f => ({ ...f, name: e.target.value }))} />
+              <Label>Valor adquisición</Label>
+              <Input type="number" value={String(assetForm.acquisitionValue)} onChange={(e) => setAssetForm(f => ({ ...f, acquisitionValue: Number(e.target.value || 0) }))} />
+              <Label>Valor actual (para la valoración del mes)</Label>
+              <Input type="number" value={String(assetForm.currentValue)} onChange={(e) => setAssetForm(f => ({ ...f, currentValue: Number(e.target.value || 0) }))} />
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setAssetModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                <Button onClick={saveAssetForMonth} className="w-full sm:w-auto"><Save className="h-4 w-4 mr-2" /> Guardar y añadir valoración ({formatDate(selectedMonth, 'MMMM yyyy')})</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Detalles del Activo</DialogTitle>
             </DialogHeader>
@@ -266,7 +366,7 @@ const Assets: React.FC = () => {
                     <p className="text-sm text-muted-foreground">Nombre</p>
                     <p className="text-lg font-semibold">{selectedAssetData.name}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Ingresos Totales</p>
                       <p className="text-lg font-semibold text-success">
@@ -280,7 +380,7 @@ const Assets: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Beneficio Neto</p>
                       <p
