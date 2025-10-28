@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign, Calendar } from 'lucide-react';
 import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
@@ -46,6 +46,9 @@ const Assets: React.FC = () => {
       acquisitionValue: 0,
       currentValue: 0,
     });
+    const [valuationModalOpen, setValuationModalOpen] = useState(false);
+    const [valuationDate, setValuationDate] = useState<string>(formatDate(selectedMonth, 'yyyy-MM-01'));
+    const [assetValuations, setAssetValuations] = useState<Record<number, { currentValue: string; acquisitionValue?: string }>>({});
   // Obtiene el assetValue para el mes seleccionado (valor + fecha)
   const getAssetValueForMonth = (asset: Asset, month: Date): { value: number; date: Date | null } => {
     if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
@@ -196,6 +199,44 @@ const Assets: React.FC = () => {
         toast.error('Error guardando activo');
       }
     };
+
+    const saveValuations = async () => {
+      if (!user?.userId) return;
+      try {
+        const promises: Promise<any>[] = [];
+        let count = 0;
+        
+        for (const [assetIdStr, values] of Object.entries(assetValuations)) {
+          const assetId = Number(assetIdStr);
+          const currentValue = Number(values.currentValue || 0);
+          
+          if (currentValue > 0) {
+            promises.push(
+              addAssetValuation(user.userId, assetId, {
+                valuationDate: valuationDate,
+                currentValue: currentValue,
+                acquisitionValue: values.acquisitionValue ? Number(values.acquisitionValue) : undefined,
+              })
+            );
+            count++;
+          }
+        }
+
+        if (promises.length === 0) {
+          toast.error('Debes añadir al menos un valor');
+          return;
+        }
+
+        await Promise.all(promises);
+        toast.success(`${count} valoración${count > 1 ? 'es' : ''} añadida${count > 1 ? 's' : ''} correctamente`);
+        setValuationModalOpen(false);
+        setAssetValuations({});
+        fetchAssets();
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err.message || 'Error guardando valoraciones');
+      }
+    };
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
@@ -256,6 +297,18 @@ const Assets: React.FC = () => {
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Nuevo activo
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setValuationDate(formatDate(selectedMonth, 'yyyy-MM-01'));
+                    setAssetValuations({});
+                    setValuationModalOpen(true);
+                  }}
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Añadir valoración
                 </Button>
               </div>
             </div>
@@ -440,6 +493,74 @@ const Assets: React.FC = () => {
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setAssetModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
                 <Button onClick={saveAssetForMonth} className="w-full sm:w-auto"><Save className="h-4 w-4 mr-2" /> Guardar y añadir valoración ({formatDate(selectedMonth, 'MMMM yyyy')})</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={valuationModalOpen} onOpenChange={setValuationModalOpen}>
+          <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Añadir valoración de activos</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Fecha de valoración</Label>
+                <Input
+                  type="date"
+                  value={valuationDate}
+                  onChange={(e) => setValuationDate(e.target.value)}
+                />
+              </div>
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Valores por activo:</p>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                  {assets.map(asset => (
+                    <div key={asset.assetId} className="border rounded-lg p-4 space-y-3">
+                      <h4 className="font-semibold">{asset.name}</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <Label>Valor actual *</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={assetValuations[asset.assetId]?.currentValue || ''}
+                            onChange={(e) => setAssetValuations(prev => ({
+                              ...prev,
+                              [asset.assetId]: {
+                                ...prev[asset.assetId],
+                                currentValue: e.target.value,
+                              }
+                            }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Valor adquisición (opcional)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={assetValuations[asset.assetId]?.acquisitionValue || ''}
+                            onChange={(e) => setAssetValuations(prev => ({
+                              ...prev,
+                              [asset.assetId]: {
+                                ...prev[asset.assetId],
+                                acquisitionValue: e.target.value,
+                              }
+                            }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
+                <Button variant="ghost" onClick={() => setValuationModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                <Button onClick={saveValuations} className="w-full sm:w-auto">
+                  <Save className="h-4 w-4 mr-2" />
+                  Guardar valoraciones
+                </Button>
               </div>
             </div>
           </DialogContent>

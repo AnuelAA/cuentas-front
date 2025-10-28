@@ -442,7 +442,7 @@ export const updateLiability = async (
 export const addLiabilitySnapshot = async (
   userId: number,
   liabilityId: number,
-  payload: { valuationDate: string; outstandingBalance: number }
+  payload: { valuationDate: string; outstandingBalance: number; endDate?: string }
 ): Promise<any> => {
   const response = await api.post(`/users/${userId}/liabilities/${liabilityId}/values`, payload);
   return response.data;

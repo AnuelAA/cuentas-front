@@ -23,7 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, Save, Plus, RefreshCw, CreditCard, AlertCircle, TrendingDown, DollarSign } from 'lucide-react';
+import { Eye, Save, Plus, RefreshCw, CreditCard, AlertCircle, TrendingDown, DollarSign, Calendar } from 'lucide-react';
 import { format, parseISO, isValid, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
@@ -47,6 +47,9 @@ const Liabilities: React.FC = () => {
       principalAmount: 0,
       outstandingBalance: 0,
     });
+    const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+    const [snapshotDate, setSnapshotDate] = useState<string>(formatDate(selectedMonth, 'yyyy-MM-01'));
+    const [liabilitySnapshots, setLiabilitySnapshots] = useState<Record<number, { outstandingBalance: string; endDate?: string }>>({});
   // Helper: obtener snapshot de liabilityValues para el mes seleccionado
   const getLiabilitySnapshotForMonth = (liability: Liability, month: Date) => {
     if (!Array.isArray(liability.liabilityValues) || liability.liabilityValues.length === 0) {
@@ -198,6 +201,47 @@ const Liabilities: React.FC = () => {
       }
     };
 
+    const saveSnapshots = async () => {
+      if (!user?.userId) return;
+      try {
+        const promises: Promise<any>[] = [];
+        let count = 0;
+        
+        for (const [liabilityIdStr, snapshot] of Object.entries(liabilitySnapshots)) {
+          const liabilityId = Number(liabilityIdStr);
+          const outstandingBalance = Number(snapshot.outstandingBalance || 0);
+          
+          if (outstandingBalance > 0) {
+            const payload: { valuationDate: string; outstandingBalance: number; endDate?: string } = {
+              valuationDate: snapshotDate,
+              outstandingBalance: outstandingBalance,
+            };
+            
+            if (snapshot.endDate) {
+              payload.endDate = snapshot.endDate;
+            }
+            
+            promises.push(addLiabilitySnapshot(user.userId, liabilityId, payload));
+            count++;
+          }
+        }
+
+        if (promises.length === 0) {
+          toast.error('Debes añadir al menos un valor');
+          return;
+        }
+
+        await Promise.all(promises);
+        toast.success(`${count} snapshot${count > 1 ? 's' : ''} añadido${count > 1 ? 's' : ''} correctamente`);
+        setSnapshotModalOpen(false);
+        setLiabilitySnapshots({});
+        fetchLiabilities();
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err.message || 'Error guardando snapshots');
+      }
+    };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
@@ -267,6 +311,18 @@ const Liabilities: React.FC = () => {
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Nuevo pasivo
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setSnapshotDate(formatDate(selectedMonth, 'yyyy-MM-01'));
+                    setLiabilitySnapshots({});
+                    setSnapshotModalOpen(true);
+                  }}
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Añadir snapshot
                 </Button>
               </div>
             </div>
@@ -409,6 +465,72 @@ const Liabilities: React.FC = () => {
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setLiabilityModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
                 <Button onClick={saveLiabilityForMonth} className="w-full sm:w-auto"><Save className="h-4 w-4 mr-2" /> Guardar y añadir snapshot ({formatDate(selectedMonth, 'MMMM yyyy')})</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={snapshotModalOpen} onOpenChange={setSnapshotModalOpen}>
+          <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Añadir snapshot de pasivos</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Fecha de snapshot</Label>
+                <Input
+                  type="date"
+                  value={snapshotDate}
+                  onChange={(e) => setSnapshotDate(e.target.value)}
+                />
+              </div>
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Valores por pasivo:</p>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                  {liabilities.map(liability => (
+                    <div key={liability.liabilityId} className="border rounded-lg p-4 space-y-3">
+                      <h4 className="font-semibold">{liability.name}</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <Label>Saldo pendiente *</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={liabilitySnapshots[liability.liabilityId]?.outstandingBalance || ''}
+                            onChange={(e) => setLiabilitySnapshots(prev => ({
+                              ...prev,
+                              [liability.liabilityId]: {
+                                ...prev[liability.liabilityId],
+                                outstandingBalance: e.target.value,
+                              }
+                            }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Fecha fin (opcional)</Label>
+                          <Input
+                            type="date"
+                            value={liabilitySnapshots[liability.liabilityId]?.endDate || ''}
+                            onChange={(e) => setLiabilitySnapshots(prev => ({
+                              ...prev,
+                              [liability.liabilityId]: {
+                                ...prev[liability.liabilityId],
+                                endDate: e.target.value,
+                              }
+                            }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
+                <Button variant="ghost" onClick={() => setSnapshotModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+                <Button onClick={saveSnapshots} className="w-full sm:w-auto">
+                  <Save className="h-4 w-4 mr-2" />
+                  Guardar snapshots
+                </Button>
               </div>
             </div>
           </DialogContent>
