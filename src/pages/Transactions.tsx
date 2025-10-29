@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { toast } from 'sonner';
@@ -307,6 +307,38 @@ const Transactions: React.FC = () => {
   const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
   const netBalance = totalIncome - totalExpenses;
 
+  // Calcular totales acumulados por categoría (como Excel)
+  const totalsByCategory = React.useMemo(() => {
+    const categoryTotals: Record<string, { name: string; income: number; expense: number; total: number; type: 'income' | 'expense' }> = {};
+    
+    rows.forEach(r => {
+      const categoryName = r.categoryName || categories.find(c => c.categoryId === r.categoryId)?.name || 'Sin categoría';
+      const key = categoryName.toLowerCase().trim();
+      
+      if (!categoryTotals[key]) {
+        categoryTotals[key] = {
+          name: categoryName,
+          income: 0,
+          expense: 0,
+          total: 0,
+          type: r.type || 'expense'
+        };
+      }
+      
+      if (r.type === 'income') {
+        categoryTotals[key].income += r.amount || 0;
+        categoryTotals[key].total += r.amount || 0;
+      } else if (r.type === 'expense') {
+        categoryTotals[key].expense += r.amount || 0;
+        categoryTotals[key].total += r.amount || 0;
+      }
+    });
+    
+    return Object.values(categoryTotals)
+      .filter(cat => cat.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [rows, categories]);
+
   const rowClass = (r: Row, idx: number) => {
     const baseClass = 'transition-all duration-200 hover:bg-slate-50/50';
     const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30';
@@ -409,6 +441,72 @@ const Transactions: React.FC = () => {
             </Card>
           </div>
         </div>
+
+        {/* Totales Acumulados por Categoría */}
+        {totalsByCategory.length > 0 && (
+          <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-b border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-blue-500 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-blue-900">Totales Acumulados por Categoría</CardTitle>
+                  <p className="text-sm text-blue-700/70 mt-0.5">
+                    Suma automática de todas las transacciones del periodo seleccionado
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+                {totalsByCategory.map((cat) => {
+                  const isIncome = cat.type === 'income';
+                  const hasBoth = cat.income > 0 && cat.expense > 0;
+                  return (
+                    <div
+                      key={cat.name}
+                      className={`p-3 rounded-lg border-2 ${
+                        isIncome
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-red-50 border-red-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm text-gray-900 truncate" title={cat.name}>
+                            {cat.name}
+                          </p>
+                          {hasBoth && (
+                            <div className="text-xs text-gray-600 mt-1">
+                              <span className="text-green-700">Ing: {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cat.income)}</span>
+                              {' • '}
+                              <span className="text-red-700">Gas: {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cat.expense)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-2 text-right">
+                          <p
+                            className={`text-lg font-bold ${
+                              isIncome ? 'text-green-700' : 'text-red-700'
+                            }`}
+                          >
+                            {new Intl.NumberFormat('es-ES', {
+                              style: 'currency',
+                              currency: 'EUR',
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }).format(cat.total)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-green-100 shadow-lg">
           <CardHeader className="bg-gradient-to-r from-green-50 to-green-50/50 border-b border-green-100">
