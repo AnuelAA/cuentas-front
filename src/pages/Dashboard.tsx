@@ -6,14 +6,16 @@ import {
   getAssets,
   getLiabilities,
   getTransactions,
-  getCategories
+  getCategories,
+  getAssetTypes
 } from '@/services/api';
-import type { DashboardMetrics, DashboardSummary, Asset, Liability } from '@/types/api';
+import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType } from '@/types/api';
+import { calculateCashReconciliation } from '@/lib/cashReconciliation';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro, AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -51,6 +53,7 @@ const Dashboard: React.FC = () => {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [assetTypes, setAssetTypes] = useState<AssetType[]>([]);
   const [loading, setLoading] = useState(true);
 
     // Rango por defecto: mes actual
@@ -91,7 +94,8 @@ const Dashboard: React.FC = () => {
         assetsData,
         liabilitiesData,
         txsData,
-        catsData
+        catsData,
+        assetTypesData
       ] = await Promise.all([
         getDashboard(user.userId, startDate, endDate),
         getDashboardSummary(user.userId, 'year'),
@@ -99,7 +103,8 @@ const Dashboard: React.FC = () => {
         getAssets(user.userId),
         getLiabilities(user.userId),
         getTransactions(user.userId, startDate, endDate),
-        getCategories(user.userId)
+        getCategories(user.userId),
+        getAssetTypes()
       ]);
 
       setMetrics(metricsData);
@@ -107,6 +112,7 @@ const Dashboard: React.FC = () => {
       setLiabilities(liabilitiesData);
       setTransactions(txsData);
       setCategories(catsData);
+      setAssetTypes(assetTypesData);
 
       // Inicializar seleccion de series
       const initAssets: Record<string, boolean> = {};
@@ -132,6 +138,35 @@ const Dashboard: React.FC = () => {
     fetchDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, startDate, endDate]);
+
+  // Calcular cuadre de caja para el último mes completo (el mes más reciente con datos)
+  const cashReconciliation = useMemo(() => {
+    if (!assets.length || !transactions.length || !assetTypes.length) return null;
+    
+    // Usar el mes actual o el último mes con valoraciones
+    let monthToCheck = startOfMonth(new Date());
+    
+    // Intentar usar el último mes que tenga valoraciones
+    let latestValuation: Date | null = null;
+    assets.forEach(a => {
+      if (Array.isArray(a.assetValues)) {
+        a.assetValues.forEach(v => {
+          try {
+            const d = parseISO(v.valuationDate);
+            if (!latestValuation || d.getTime() > latestValuation.getTime()) {
+              latestValuation = d;
+            }
+          } catch {}
+        });
+      }
+    });
+    
+    if (latestValuation) {
+      monthToCheck = startOfMonth(latestValuation);
+    }
+    
+    return calculateCashReconciliation(assets, transactions, assetTypes, monthToCheck);
+  }, [assets, transactions, assetTypes]);
 
   // --- Utilidades de formato ---
   const formatCurrency = (value: number) =>
@@ -458,6 +493,83 @@ const Dashboard: React.FC = () => {
             <StatCard title="Balance Neto" value={formatCurrency(metrics?.netBalance || 0)} icon={Euro} className="border-l-4 border-l-primary" />
           </div>
         </div>
+
+        {/* Cuadre de Caja */}
+        {cashReconciliation && (
+          <Card className={cashReconciliation.isBalanced ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-50/50'}>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                {cashReconciliation.isBalanced ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-yellow-600" />
+                )}
+                <CardTitle>
+                  Cuadre de Caja - {format(cashReconciliation.month, 'MMMM yyyy')}
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Balance Inicial</p>
+                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliation.initialBalance)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Ingresos del mes</p>
+                    <p className="text-lg font-semibold text-green-700">+{formatCurrency(cashReconciliation.income)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Gastos del mes</p>
+                    <p className="text-lg font-semibold text-red-700">-{formatCurrency(cashReconciliation.expenses)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Balance Esperado</p>
+                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliation.expectedBalance)}</p>
+                  </div>
+                </div>
+                
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Balance Real</p>
+                      <p className="text-2xl font-bold">{formatCurrency(cashReconciliation.actualBalance)}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ({cashReconciliation.checkingAccounts.length} {cashReconciliation.checkingAccounts.length === 1 ? 'cuenta corriente' : 'cuentas corrientes'})
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground mb-1">Diferencia</p>
+                      <p className={`text-2xl font-bold ${cashReconciliation.isBalanced ? 'text-green-700' : Math.abs(cashReconciliation.difference) > 100 ? 'text-red-700' : 'text-yellow-700'}`}>
+                        {cashReconciliation.difference >= 0 ? '+' : ''}{formatCurrency(cashReconciliation.difference)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {!cashReconciliation.isBalanced && (
+                  <div className={`rounded-lg p-3 ${Math.abs(cashReconciliation.difference) > 100 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    <p className="text-sm font-medium">
+                      {cashReconciliation.difference > 0 
+                        ? `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliation.difference))} más en las cuentas de lo esperado. Podría faltar registrar alguna transacción de gasto.`
+                        : `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliation.difference))} menos en las cuentas de lo esperado. Podría faltar registrar alguna transacción de ingreso.`
+                      }
+                    </p>
+                  </div>
+                )}
+                
+                {cashReconciliation.isBalanced && (
+                  <div className="rounded-lg p-3 bg-green-100 text-green-800">
+                    <p className="text-sm font-medium">
+                      ✓ La caja cuadra correctamente. Todas las transacciones están registradas.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Gráficos: Ingresos vs Gastos + breakdowns */}
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-4">

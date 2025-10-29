@@ -154,3 +154,10 @@ export interface DashboardSummary {
   totalExpenses: number;
   netProfit: number;
 }
+
+export interface AssetType {
+  assetTypeId: number;
+  name: string;
+  description?: string;
+  isCheckingAccount?: boolean; // Indica si este tipo es considerado "cuenta corriente" para el cuadre de caja
+}

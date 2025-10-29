@@ -16,6 +16,7 @@ import type {
   MonthlyRoi,
   AssetRoi,
   DashboardSummary,
+  AssetType,
 } from '@/types/api';
 
 // URL base fija al backend; permite override con VITE_API_URL si se define
@@ -165,6 +166,12 @@ export const getDashboard = async (
 // Assets
 export const getAssets = async (userId: number): Promise<Asset[]> => {
   const response = await api.get<Asset[]>(`/users/${userId}/assets`);
+  return response.data;
+};
+
+// Asset Types
+export const getAssetTypes = async (): Promise<AssetType[]> => {
+  const response = await api.get<AssetType[]>('/asset-types');
   return response.data;
 };
 
