@@ -10,7 +10,7 @@ import {
   getAssetTypes
 } from '@/services/api';
 import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType } from '@/types/api';
-import { calculateCashReconciliation } from '@/lib/cashReconciliation';
+import { calculateCashReconciliation, calculateCashReconciliationRange, isCheckingAccount } from '@/lib/cashReconciliation';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +37,8 @@ import {
   addMonths,
   startOfYear,
   endOfYear,
-  subYears
+  subYears,
+  subDays
 } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -139,34 +140,18 @@ const Dashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, startDate, endDate]);
 
-  // Calcular cuadre de caja para el último mes completo (el mes más reciente con datos)
-  const cashReconciliation = useMemo(() => {
+  // Cuadre de caja en el rango visible: compara (startDate - 1 día) con endDate
+  const cashReconciliationRange = useMemo(() => {
     if (!assets.length || !transactions.length || !assetTypes.length) return null;
-    
-    // Usar el mes actual o el último mes con valoraciones
-    let monthToCheck = startOfMonth(new Date());
-    
-    // Intentar usar el último mes que tenga valoraciones
-    let latestValuation: Date | null = null;
-    assets.forEach(a => {
-      if (Array.isArray(a.assetValues)) {
-        a.assetValues.forEach(v => {
-          try {
-            const d = parseISO(v.valuationDate);
-            if (!latestValuation || d.getTime() > latestValuation.getTime()) {
-              latestValuation = d;
-            }
-          } catch {}
-        });
-      }
-    });
-    
-    if (latestValuation) {
-      monthToCheck = startOfMonth(latestValuation);
+    try {
+      const s = parseISO(startDate);
+      const e = parseISO(endDate);
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) return null;
+      return calculateCashReconciliationRange(assets, transactions, assetTypes, s, e);
+    } catch {
+      return null;
     }
-    
-    return calculateCashReconciliation(assets, transactions, assetTypes, monthToCheck);
-  }, [assets, transactions, assetTypes]);
+  }, [assets, transactions, assetTypes, startDate, endDate]);
 
   // --- Utilidades de formato ---
   const formatCurrency = (value: number) =>
@@ -237,6 +222,81 @@ const Dashboard: React.FC = () => {
   const incomeByCategoryTop = useMemo(() => collapseTop(incomeByCategory, TOP_N), [incomeByCategory]);
   const expenseByCategoryTop = useMemo(() => collapseTop(expenseByCategory, TOP_N), [expenseByCategory]);
 
+  // Inversiones: invertido neto (rango) vs valor actual (Y)
+  const investmentsSummary = useMemo(() => {
+    if (!assets.length || !transactions.length || !assetTypes.length) return null;
+
+    const tryParse = (iso?: string | null) => {
+      if (!iso) return null;
+      try { return parseISO(iso); } catch { return null; }
+    };
+    const s = tryParse(startDate);
+    const e = tryParse(endDate);
+    if (!s || !e) return null;
+    const sMinus1 = subDays(s, 1);
+
+    const type2Assets = assets.filter(a => a.assetTypeId === 2);
+    const isType2Related = (relatedAssetId?: number | null) => {
+      if (!relatedAssetId) return false;
+      const ra = assets.find(a => a.assetId === relatedAssetId);
+      return !!ra && ra.assetTypeId === 2;
+    };
+
+    // Neto invertido en el rango X..Y: ingresos (aportaciones) menos gastos (retiradas) donde hay activo relacionado no corriente
+    let investedNet = 0;
+    transactions.forEach(t => {
+      const d = tryParse(t.transactionDate);
+      if (!d || d < s || d > e) return;
+      if (!isType2Related(t.relatedAssetId ?? null)) return;
+      const amt = Math.abs(Number(t.amount) || 0);
+      const type = String(t.type ?? '').toLowerCase();
+      // Según tu regla: gasto = aportación; ingreso = retirada
+      if (type === 'expense') investedNet += amt;
+      else if (type === 'income') investedNet -= amt;
+    });
+
+    // Valor actual de inversiones a Y (última valoración <= Y)
+    const getAt = (asset: any, at: Date) => {
+      const vals = (asset.assetValues ?? []).map((v: any) => ({ d: tryParse(v.valuationDate), v: Number(v.currentValue ?? v.outstandingBalance ?? 0) }))
+        .filter(x => x.d && x.d.getTime() <= at.getTime())
+        .sort((a, b) => (b.d!.getTime() - a.d!.getTime()));
+      if (vals.length > 0) return vals[0].v;
+      return Number(asset.currentValue ?? 0);
+    };
+    const currentValue = type2Assets.reduce((suma, a) => suma + getAt(a, e), 0);
+    const startValue = type2Assets.reduce((suma, a) => suma + getAt(a, sMinus1), 0);
+    const deltaInvestments = currentValue - startValue; // variación bruta de valor
+    const netPerformance = deltaInvestments - investedNet; // variación neta tras aportaciones/retiros
+
+    return { investedNet, currentValue, deltaInvestments, netPerformance };
+  }, [assets, transactions, assetTypes, startDate, endDate]);
+
+  // Variación de pasivos en el rango (X-1 -> Y). Efecto positivo si bajan
+  const liabilitiesDeltaSummary = useMemo(() => {
+    if (!liabilities.length) return null;
+    const tryParse = (iso?: string | null) => {
+      if (!iso) return null;
+      try { return parseISO(iso); } catch { return null; }
+    };
+    const s = tryParse(startDate);
+    const e = tryParse(endDate);
+    if (!s || !e) return null;
+    const sMinus1 = subDays(s, 1);
+
+    const getLiabAt = (liab: any, at: Date) => {
+      const arr = (liab.liabilityValues ?? liab.progress ?? []).map((v: any) => ({ d: tryParse(v.valuationDate ?? v.date), v: Number(v.outstandingBalance ?? v.currentValue ?? v.amount ?? 0) }))
+        .filter(x => x.d && x.d.getTime() <= at.getTime())
+        .sort((a, b) => (b.d!.getTime() - a.d!.getTime()));
+      if (arr.length > 0) return arr[0].v;
+      return Number(liab.outstandingBalance ?? 0);
+    };
+
+    const startSum = liabilities.reduce((sum, l) => sum + getLiabAt(l, sMinus1), 0);
+    const endSum = liabilities.reduce((sum, l) => sum + getLiabAt(l, e), 0);
+    const effect = startSum - endSum; // si bajan pasivos, effect positivo
+    return { startSum, endSum, effect };
+  }, [liabilities, startDate, endDate]);
+
   // --- Leyenda ordenada renderizada externamente (evita solapado en Recharts) ---
   const renderSortedLegend = (data: { name: string; value: number; color?: string }[], total: number) => {
     const items = [...(data || [])].sort((a, b) => b.value - a.value);
@@ -276,7 +336,7 @@ const Dashboard: React.FC = () => {
         cur = addMonths(cur, 1);
       }
     } else {
-      const anchor = tryParse(metrics?.asOfDate as string) ?? new Date();
+      const anchor = new Date();
       for (let i = 11; i >= 0; i--) {
         const d = subMonths(anchor, i);
         monthsInfo.push({ label: format(d, 'MMM yyyy'), monthEnd: endOfMonth(d) });
@@ -481,7 +541,8 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat cards */}
+        {/* 1) Líquido */}
+        <h3 className="text-base font-semibold text-muted-foreground">Líquido</h3>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div className="min-w-0">
             <StatCard title="Ingresos Totales" value={formatCurrency(metrics?.totalIncome || 0)} icon={TrendingUp} className="border-l-4 border-l-success" />
@@ -494,18 +555,77 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Cuadre de Caja */}
-        {cashReconciliation && (
-          <Card className={cashReconciliation.isBalanced ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-50/50'}>
+        {/* 2) Líquido + Invertido */}
+        {investmentsSummary && liabilitiesDeltaSummary && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Líquido + Invertido</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const liquidNet = (metrics?.totalIncome || 0) - (metrics?.totalExpenses || 0);
+                const investedPlusMove = investmentsSummary.investedNet + investmentsSummary.netPerformance; // = delta valor
+                const combined = liquidNet + investedPlusMove + liabilitiesDeltaSummary.effect;
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Líquido (Ingresos − Gastos)</p>
+                      <p className={`text-xl font-semibold ${liquidNet >= 0 ? 'text-green-700' : 'text-red-700'}`}>{liquidNet >= 0 ? '+' : ''}{formatCurrency(liquidNet)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Invertido + movimiento inversiones</p>
+                      <p className={`text-xl font-semibold ${investedPlusMove >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        {investedPlusMove >= 0 ? '+' : ''}{formatCurrency(investedPlusMove)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Total</p>
+                      <p className="text-2xl font-bold">{formatCurrency(combined)}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 3) Invertido */}
+        {investmentsSummary && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Invertido</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Invertido neto (rango)</p>
+                  <p className="text-xl font-semibold text-blue-700">{formatCurrency(investmentsSummary.investedNet)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Variación neta inversiones</p>
+                  <p className={`text-xl font-semibold ${investmentsSummary.netPerformance >= 0 ? 'text-green-700' : 'text-red-700'}`}>{investmentsSummary.netPerformance >= 0 ? '+' : ''}{formatCurrency(investmentsSummary.netPerformance)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Valor actual</p>
+                  <p className="text-xl font-semibold">{formatCurrency(investmentsSummary.currentValue)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Cuadre de Caja (rango: X-1 vs Y) */}
+        {cashReconciliationRange && (
+          <Card className={cashReconciliationRange.isBalanced ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-50/50'}>
             <CardHeader>
               <div className="flex items-center gap-2">
-                {cashReconciliation.isBalanced ? (
+                {cashReconciliationRange.isBalanced ? (
                   <CheckCircle2 className="h-5 w-5 text-green-600" />
                 ) : (
                   <AlertCircle className="h-5 w-5 text-yellow-600" />
                 )}
                 <CardTitle>
-                  Cuadre de Caja - {format(cashReconciliation.month, 'MMMM yyyy')}
+                  Cuadre de Caja
                 </CardTitle>
               </div>
             </CardHeader>
@@ -514,19 +634,19 @@ const Dashboard: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Balance Inicial</p>
-                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliation.initialBalance)}</p>
+                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliationRange.initialBalance)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Ingresos del mes</p>
-                    <p className="text-lg font-semibold text-green-700">+{formatCurrency(cashReconciliation.income)}</p>
+                    <p className="text-sm text-muted-foreground mb-1">Ingresos (rango)</p>
+                    <p className="text-lg font-semibold text-green-700">+{formatCurrency(cashReconciliationRange.income)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Gastos del mes</p>
-                    <p className="text-lg font-semibold text-red-700">-{formatCurrency(cashReconciliation.expenses)}</p>
+                    <p className="text-sm text-muted-foreground mb-1">Gastos (rango)</p>
+                    <p className="text-lg font-semibold text-red-700">-{formatCurrency(cashReconciliationRange.expenses)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Balance Esperado</p>
-                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliation.expectedBalance)}</p>
+                    <p className="text-lg font-semibold">{formatCurrency(cashReconciliationRange.expectedBalance)}</p>
                   </div>
                 </div>
                 
@@ -534,32 +654,32 @@ const Dashboard: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Balance Real</p>
-                      <p className="text-2xl font-bold">{formatCurrency(cashReconciliation.actualBalance)}</p>
+                      <p className="text-2xl font-bold">{formatCurrency(cashReconciliationRange.actualBalance)}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        ({cashReconciliation.checkingAccounts.length} {cashReconciliation.checkingAccounts.length === 1 ? 'cuenta corriente' : 'cuentas corrientes'})
+                        ({cashReconciliationRange.checkingAccounts.length} {cashReconciliationRange.checkingAccounts.length === 1 ? 'cuenta corriente' : 'cuentas corrientes'})
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground mb-1">Diferencia</p>
-                      <p className={`text-2xl font-bold ${cashReconciliation.isBalanced ? 'text-green-700' : Math.abs(cashReconciliation.difference) > 100 ? 'text-red-700' : 'text-yellow-700'}`}>
-                        {cashReconciliation.difference >= 0 ? '+' : ''}{formatCurrency(cashReconciliation.difference)}
+                      <p className={`text-2xl font-bold ${cashReconciliationRange.isBalanced ? 'text-green-700' : Math.abs(cashReconciliationRange.difference) > 100 ? 'text-red-700' : 'text-yellow-700'}`}>
+                        {cashReconciliationRange.difference >= 0 ? '+' : ''}{formatCurrency(cashReconciliationRange.difference)}
                       </p>
                     </div>
                   </div>
                 </div>
                 
-                {!cashReconciliation.isBalanced && (
-                  <div className={`rounded-lg p-3 ${Math.abs(cashReconciliation.difference) > 100 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                {!cashReconciliationRange.isBalanced && (
+                  <div className={`rounded-lg p-3 ${Math.abs(cashReconciliationRange.difference) > 100 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
                     <p className="text-sm font-medium">
-                      {cashReconciliation.difference > 0 
-                        ? `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliation.difference))} más en las cuentas de lo esperado. Podría faltar registrar alguna transacción de gasto.`
-                        : `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliation.difference))} menos en las cuentas de lo esperado. Podría faltar registrar alguna transacción de ingreso.`
+                      {cashReconciliationRange.difference > 0 
+                        ? `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliationRange.difference))} más en las cuentas de lo esperado. Podría faltar registrar alguna transacción de gasto en el rango.`
+                        : `⚠️ Hay ${formatCurrency(Math.abs(cashReconciliationRange.difference))} menos en las cuentas de lo esperado. Podría faltar registrar alguna transacción de ingreso en el rango.`
                       }
                     </p>
                   </div>
                 )}
                 
-                {cashReconciliation.isBalanced && (
+                {cashReconciliationRange.isBalanced && (
                   <div className="rounded-lg p-3 bg-green-100 text-green-800">
                     <p className="text-sm font-medium">
                       ✓ La caja cuadra correctamente. Todas las transacciones están registradas.
@@ -640,6 +760,27 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Inversiones: invertido (neto en rango) vs valor actual */}
+        {investmentsSummary && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Inversiones — Invertido vs Valor actual</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Invertido neto (rango)</p>
+                  <p className="text-2xl font-bold text-blue-700">{formatCurrency(investmentsSummary.investedNet)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Valor actual (fin del rango)</p>
+                  <p className="text-2xl font-bold">{formatCurrency(investmentsSummary.currentValue)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Evolución de Activos */}
         <Card className="overflow-visible">

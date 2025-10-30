@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --mode development",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:local": "vite build --mode development",
+    "start": "serve -s dist -l 3000",
+    "start:local": "npm run build:local && serve -s dist -l 3000",
+    "sl": "npm run start:local",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start": "serve -s dist -l 3000"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

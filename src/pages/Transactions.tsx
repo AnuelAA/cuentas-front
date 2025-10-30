@@ -1,6 +1,6 @@
 // typescript
 // `src/pages/Transactions.tsx`
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getTransactions,
@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/table';
 import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
 import { toast } from 'sonner';
 
 type Row = {
@@ -77,6 +77,8 @@ const Transactions: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
+  const [quickAdjustValues, setQuickAdjustValues] = useState<Record<string, string[]>>({}); // Lista de valores de ajuste rápido por fila
+  const [editingRowIds, setEditingRowIds] = useState<Record<string, boolean>>({});
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -181,13 +183,24 @@ const Transactions: React.FC = () => {
       amount: Math.abs(t.amount),
     }));
     setRows(mapped);
+    // Inicializar campos de ajuste vacíos para cada fila
+    setQuickAdjustValues(prev => {
+      const newValues: Record<string, string[]> = {};
+      mapped.forEach(row => {
+        if (!prev[row.localId]) {
+          newValues[row.localId] = [''];
+        }
+      });
+      return { ...prev, ...newValues };
+    });
   }, [transactions]);
 
   const addEmptyRow = (type?: 'income' | 'expense') => {
+    const newLocalId = `new-${Date.now()}-${Math.random()}`;
     setRows(prev => [
       ...prev,
       {
-        localId: `new-${Date.now()}-${Math.random()}`,
+        localId: newLocalId,
         isNew: true,
         type: type,
         transactionDate: defaultNewDate,
@@ -195,10 +208,171 @@ const Transactions: React.FC = () => {
         amount: 0,
       } as Row,
     ]);
+    // Inicializar campo de ajuste vacío para la nueva fila
+    setQuickAdjustValues(prev => ({
+      ...prev,
+      [newLocalId]: ['']
+    }));
   };
 
   const updateRow = (localId: string, patch: Partial<Row>) => {
     setRows(prev => prev.map(r => (r.localId === localId ? { ...r, ...patch, isEdited: !r.isNew ? true : r.isEdited } : r)));
+  };
+
+  // Función para manejar el cambio en el campo de cantidad
+  const handleAmountChange = (localId: string, value: string) => {
+    const row = rows.find(r => r.localId === localId);
+    
+    // Si el valor es vacío o solo contiene el 0 inicial, establecer a vacío (se mostrará como placeholder)
+    if (!value || value === '0') {
+      updateRow(localId, { amount: 0 });
+      return;
+    }
+    
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue)) {
+      updateRow(localId, { amount: numValue });
+    }
+  };
+
+  // Función para obtener el valor a mostrar (vacío si es 0, para que se muestre placeholder)
+  const getAmountDisplayValue = (row: Row): string => {
+    if (row.amount === 0 || row.amount === null || row.amount === undefined) {
+      return '';
+    }
+    return row.amount.toString();
+  };
+
+  // Función para combinar transacciones duplicadas (solo cuando se guarda)
+  // Solo combina si coinciden: categoría, tipo, fecha EXACTA (yyyy-MM-dd) y activo
+  const combineDuplicateTransactions = (rowsToProcess: Row[]): Row[] => {
+    const processed: Row[] = [];
+    const combinedKeys = new Set<string>();
+
+    for (const row of rowsToProcess) {
+      // Solo combinar filas nuevas o editadas que tengan todos los campos necesarios
+      if (!row.categoryName && !row.categoryId) {
+        processed.push(row);
+        continue;
+      }
+
+      const transactionDate = row.transactionDate?.substring(0, 10); // yyyy-MM-dd
+      const categoryName = (row.categoryName || categories.find(c => c.categoryId === row.categoryId)?.name || '').toLowerCase().trim();
+      // Incluir activo en la clave si existe (null === null se considera igual para no tener activo)
+      const assetId = row.assetId ?? null;
+      const key = `${transactionDate}-${categoryName}-${row.type}-asset:${assetId}`;
+
+      if (combinedKeys.has(key)) {
+        // Ya combinamos una fila con esta clave, saltar esta
+        continue;
+      }
+
+      // Buscar todas las filas que coinciden con esta clave (incluyendo activo)
+      const matchingRows = rowsToProcess.filter(r => {
+        if (r === row) return false;
+        const rDate = r.transactionDate?.substring(0, 10);
+        const rCategoryName = (r.categoryName || categories.find(c => c.categoryId === r.categoryId)?.name || '').toLowerCase().trim();
+        const rAssetId = r.assetId ?? null;
+        const rKey = `${rDate}-${rCategoryName}-${r.type}-asset:${rAssetId}`;
+        return rKey === key;
+      });
+
+      if (matchingRows.length > 0) {
+        // Combinar todas las filas que coinciden
+        const totalAmount = [row, ...matchingRows].reduce((sum, r) => sum + (r.amount || 0), 0);
+        // Usar la primera fila como base (si es existente, mantenerla; si no, usar la primera nueva)
+        const baseRow = row.isNew ? matchingRows.find(r => !r.isNew) || row : row;
+        processed.push({
+          ...baseRow,
+          amount: totalAmount,
+          isEdited: !baseRow.isNew ? true : baseRow.isEdited,
+        });
+        combinedKeys.add(key);
+      } else {
+        processed.push(row);
+      }
+    }
+
+    return processed;
+  };
+
+  // Función para añadir un valor de ajuste a la lista (no se aplica hasta guardar)
+  const addQuickAdjustValue = (localId: string, index: number, value: string) => {
+    setQuickAdjustValues(prev => {
+      const current = prev[localId] || [];
+      const updated = [...current];
+      updated[index] = value;
+      
+      // Si el valor no está vacío y es el último campo, añadir uno nuevo
+      if (value.trim() && index === current.length - 1) {
+        updated.push('');
+      }
+      
+      return { ...prev, [localId]: updated };
+    });
+  };
+
+  // Función para eliminar un valor de ajuste
+  const removeQuickAdjustValue = (localId: string, index: number) => {
+    setQuickAdjustValues(prev => {
+      const current = prev[localId] || [];
+      const updated = current.filter((_, i) => i !== index);
+      return { ...prev, [localId]: updated.length > 0 ? updated : [''] };
+    });
+  };
+
+  // Aplicar todos los ajustes acumulados al guardar
+  const applyPendingAdjustments = (rowsToProcess: Row[]): Row[] => {
+    return rowsToProcess.map(row => {
+      const adjustments = quickAdjustValues[row.localId] || [];
+      if (adjustments.length === 0) return row;
+      
+      let totalAdjustment = 0;
+      for (const adjustStr of adjustments) {
+        if (!adjustStr.trim()) continue;
+        
+        // Normalizar: reemplazar coma por punto y eliminar espacios
+        const normalized = adjustStr.trim().replace(',', '.');
+        
+        // Aceptar: +10, -5, 10, -5.50, +0.56, 0.56, 0,56, .56, 0.01, etc.
+        // Regex mejorado para aceptar números que empiezan con punto o coma también
+        const adjustMatch = normalized.match(/^([+\-]?)(\d*[.,]?\d+)$/);
+        if (!adjustMatch) {
+          console.warn(`Ajuste no válido: "${adjustStr}" (normalizado: "${normalized}")`);
+          continue;
+        }
+        
+        const op = adjustMatch[1] || '+';
+        let valStr = adjustMatch[2].replace(',', '.'); // Normalizar coma a punto
+        
+        // Si empieza con punto, añadir 0 delante (.56 -> 0.56)
+        if (valStr.startsWith('.')) {
+          valStr = '0' + valStr;
+        }
+        
+        const val = parseFloat(valStr);
+        if (isNaN(val)) {
+          console.warn(`No se pudo parsear el valor: "${valStr}" de "${adjustStr}"`);
+          continue;
+        }
+        
+        console.log(`Ajuste aplicado: "${adjustStr}" -> ${op === '+' ? '+' : '-'}${val} = ${val}`);
+        totalAdjustment += op === '+' ? val : -val;
+      }
+      
+      if (totalAdjustment !== 0) {
+        const oldAmount = row.amount || 0;
+        const newAmount = Math.max(0, oldAmount + totalAdjustment);
+        console.log(`Fila ${row.localId}: ${oldAmount} + ${totalAdjustment} = ${newAmount}`);
+        return {
+          ...row,
+          amount: newAmount,
+          isEdited: !row.isNew ? true : row.isEdited,
+        };
+      }
+      
+      return row;
+    });
   };
 
   const removeRow = (localId: string) => {
@@ -217,29 +391,80 @@ const Transactions: React.FC = () => {
         });
     } else {
       setRows(prev => prev.filter(r => r.localId !== localId));
+      // También eliminar los ajustes asociados
+      setQuickAdjustValues(prev => {
+        const next = { ...prev };
+        delete next[localId];
+        return next;
+      });
     }
   };
 
   const handleSaveAll = async () => {
       if (!user?.userId) return;
 
-      const invalid = rows.filter(r => r.amount == null || r.amount <= 0);
+      // Primero aplicar los ajustes pendientes
+      const rowsWithAdjustments = applyPendingAdjustments(rows);
+      
+      console.log('Rows después de aplicar ajustes:', rowsWithAdjustments);
+      console.log('Ajustes pendientes:', quickAdjustValues);
+
+      const invalid = rowsWithAdjustments.filter(r => r.amount == null || isNaN(r.amount) || r.amount < 0);
       if (invalid.length > 0) {
-        toast.error('Todas las filas deben tener cantidad mayor que 0');
+        console.error('Filas inválidas:', invalid);
+        toast.error('Todas las filas deben tener una cantidad válida (mayor o igual a 0)');
         return;
       }
+      
+      // Filtrar filas con cantidad 0 (no tiene sentido guardar transacciones de 0)
+      const zeroAmountRows = rowsWithAdjustments.filter(r => r.amount === 0);
+      if (zeroAmountRows.length > 0) {
+        const confirmDelete = confirm(`Hay ${zeroAmountRows.length} transacción(es) con cantidad 0. ¿Deseas eliminarlas antes de guardar?`);
+        if (confirmDelete) {
+          const zeroIds = zeroAmountRows.map(r => r.localId);
+          setRows(prev => prev.filter(r => !zeroIds.includes(r.localId)));
+          setQuickAdjustValues(prev => {
+            const next = { ...prev };
+            zeroIds.forEach(id => delete next[id]);
+            return next;
+          });
+          // Continuar guardando las demás
+        } else {
+          // Si no quiere eliminarlas, no guardar nada
+          return;
+        }
+      }
+      
+      // Filtrar las filas con cantidad 0 antes de guardar
+      const rowsToSave = rowsWithAdjustments.filter(r => r.amount > 0);
+      if (rowsToSave.length === 0) {
+        toast.error('No hay transacciones válidas para guardar (todas tienen cantidad 0 o menor)');
+        return;
+      }
+
+      // Combinar transacciones duplicadas ANTES de guardar
+      const combinedRows = combineDuplicateTransactions(rowsToSave);
+      
+      console.log('Filas combinadas para guardar:', combinedRows);
+      console.log('Filas nuevas:', combinedRows.filter(r => r.isNew).length);
+      console.log('Filas editadas:', combinedRows.filter(r => r.isEdited && !r.isNew).length);
 
       const toCreate: CreateTransactionRequest[] = [];
       const toUpdate: { transactionId: number; payload: CreateTransactionRequest }[] = [];
 
-      for (const r of rows) {
+      for (const r of combinedRows) {
         const payload = await buildPayloadFromRow(r);
         if (r.isNew) {
           toCreate.push(payload);
         } else if (r.isEdited && r.transactionId) {
           toUpdate.push({ transactionId: r.transactionId, payload });
+        } else {
+          console.log('Fila saltada (no nueva ni editada):', r);
         }
       }
+      
+      console.log('Para crear:', toCreate.length);
+      console.log('Para actualizar:', toUpdate.length);
 
       const results = {
         created: 0,
@@ -283,12 +508,104 @@ const Transactions: React.FC = () => {
           toast.success(msg);
         }
 
+        setQuickAdjustValues({}); // Limpiar ajustes pendientes
         fetchTransactions();
       } catch (err) {
         console.error('Error guardando transacciones:', err);
         toast.error('Error guardando transacciones');
       }
     };
+
+  // loading guard se mueve más abajo para no romper el orden de hooks
+
+  // Agrupar ingresos por categoría
+  const incomeByCategory = useMemo(() => {
+    if (!rows || rows.length === 0) return [];
+    
+    try {
+      const incomeRows = rows.filter(r => r.type === 'income');
+      const grouped: Record<string, { 
+        categoryId?: number; 
+        categoryName: string; 
+        rows: Row[];
+        total: number;
+      }> = {};
+      
+      incomeRows.forEach(row => {
+        const categoryName = row.categoryName || 
+                            (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
+                            'Sin categoría';
+        const key = `${row.categoryId || 'none'}-${categoryName.toLowerCase()}`;
+        
+        if (!grouped[key]) {
+          grouped[key] = {
+            categoryId: row.categoryId,
+            categoryName,
+            rows: [],
+            total: 0,
+          };
+        }
+        
+        grouped[key].rows.push(row);
+        grouped[key].total += row.amount || 0;
+      });
+      
+      return Object.values(grouped).sort((a, b) => 
+        a.categoryName.localeCompare(b.categoryName)
+      );
+    } catch (error) {
+      console.error('Error grouping income by category:', error);
+      return [];
+    }
+  }, [rows, categories]);
+
+  // Agrupar gastos por categoría
+  const expenseByCategory = useMemo(() => {
+    if (!rows || rows.length === 0) return [];
+    
+    try {
+      const expenseRows = rows.filter(r => r.type === 'expense');
+      const grouped: Record<string, { 
+        categoryId?: number; 
+        categoryName: string; 
+        rows: Row[];
+        total: number;
+      }> = {};
+      
+      expenseRows.forEach(row => {
+        const categoryName = row.categoryName || 
+                            (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
+                            'Sin categoría';
+        const key = `${row.categoryId || 'none'}-${categoryName.toLowerCase()}`;
+        
+        if (!grouped[key]) {
+          grouped[key] = {
+            categoryId: row.categoryId,
+            categoryName,
+            rows: [],
+            total: 0,
+          };
+        }
+        
+        grouped[key].rows.push(row);
+        grouped[key].total += row.amount || 0;
+      });
+      
+      return Object.values(grouped).sort((a, b) => 
+        a.categoryName.localeCompare(b.categoryName)
+      );
+    } catch (error) {
+      console.error('Error grouping expenses by category:', error);
+      return [];
+    }
+  }, [rows, categories]);
+  
+  const incomeRows = rows.filter(r => r.type === 'income');
+  const expenseRows = rows.filter(r => r.type === 'expense');
+
+  const totalIncome = incomeRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const netBalance = totalIncome - totalExpenses;
 
   if (loading) {
     return (
@@ -300,44 +617,28 @@ const Transactions: React.FC = () => {
     );
   }
 
-  const incomeRows = rows.filter(r => r.type === 'income');
-  const expenseRows = rows.filter(r => r.type === 'expense');
+  // Función para añadir una nueva transacción a una categoría específica
+  const addEmptyRowToCategory = (categoryName: string, categoryId?: number, type?: 'income' | 'expense') => {
+    const newLocalId = `new-${Date.now()}-${Math.random()}`;
+    setRows(prev => [
+      ...prev,
+      {
+        localId: newLocalId,
+        isNew: true,
+        type: type,
+        categoryName,
+        categoryId,
+        transactionDate: defaultNewDate,
+        description: '',
+        amount: 0,
+      } as Row,
+    ]);
+    setQuickAdjustValues(prev => ({
+      ...prev,
+      [newLocalId]: ['']
+    }));
+  };
 
-  const totalIncome = incomeRows.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const netBalance = totalIncome - totalExpenses;
-
-  // Calcular totales acumulados por categoría (como Excel)
-  const totalsByCategory = React.useMemo(() => {
-    const categoryTotals: Record<string, { name: string; income: number; expense: number; total: number; type: 'income' | 'expense' }> = {};
-    
-    rows.forEach(r => {
-      const categoryName = r.categoryName || categories.find(c => c.categoryId === r.categoryId)?.name || 'Sin categoría';
-      const key = categoryName.toLowerCase().trim();
-      
-      if (!categoryTotals[key]) {
-        categoryTotals[key] = {
-          name: categoryName,
-          income: 0,
-          expense: 0,
-          total: 0,
-          type: r.type || 'expense'
-        };
-      }
-      
-      if (r.type === 'income') {
-        categoryTotals[key].income += r.amount || 0;
-        categoryTotals[key].total += r.amount || 0;
-      } else if (r.type === 'expense') {
-        categoryTotals[key].expense += r.amount || 0;
-        categoryTotals[key].total += r.amount || 0;
-      }
-    });
-    
-    return Object.values(categoryTotals)
-      .filter(cat => cat.total > 0)
-      .sort((a, b) => b.total - a.total);
-  }, [rows, categories]);
 
   const rowClass = (r: Row, idx: number) => {
     const baseClass = 'transition-all duration-200 hover:bg-slate-50/50';
@@ -353,9 +654,26 @@ const Transactions: React.FC = () => {
     return `${baseClass} ${stripe} ${typeClass} ${editedClass} ${newClass}`;
   };
 
+  const toggleEdit = (localId: string, on?: boolean) => {
+    setEditingRowIds(prev => ({ ...prev, [localId]: on === undefined ? !prev[localId] : on }));
+    // marcar como editado para asegurar envío al guardar
+    updateRow(localId, {});
+  };
+
+  const safeFormatDate = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (!isValidDate(d)) return iso;
+    try {
+      return format(d, 'dd/MM/yyyy');
+    } catch {
+      return iso;
+    }
+  };
+
   return (
     <Layout>
-      <div className="space-y-6 px-2 sm:px-0">
+      <div className="space-y-6 max-w-7xl mx-auto px-2 sm:px-4">
         {/* Header mejorado */}
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -442,72 +760,94 @@ const Transactions: React.FC = () => {
           </div>
         </div>
 
-        {/* Totales Acumulados por Categoría */}
-        {totalsByCategory.length > 0 && (
-          <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50 shadow-lg">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-50/50 border-b border-blue-100">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-500 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl text-blue-900">Totales Acumulados por Categoría</CardTitle>
-                  <p className="text-sm text-blue-700/70 mt-0.5">
-                    Suma automática de todas las transacciones del periodo seleccionado
-                  </p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-                {totalsByCategory.map((cat) => {
-                  const isIncome = cat.type === 'income';
-                  const hasBoth = cat.income > 0 && cat.expense > 0;
-                  return (
-                    <div
-                      key={cat.name}
-                      className={`p-3 rounded-lg border-2 ${
-                        isIncome
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-red-50 border-red-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-gray-900 truncate" title={cat.name}>
-                            {cat.name}
-                          </p>
-                          {hasBoth && (
-                            <div className="text-xs text-gray-600 mt-1">
-                              <span className="text-green-700">Ing: {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cat.income)}</span>
-                              {' • '}
-                              <span className="text-red-700">Gas: {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cat.expense)}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="ml-2 text-right">
-                          <p
-                            className={`text-lg font-bold ${
-                              isIncome ? 'text-green-700' : 'text-red-700'
-                            }`}
-                          >
-                            {new Intl.NumberFormat('es-ES', {
-                              style: 'currency',
-                              currency: 'EUR',
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }).format(cat.total)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Añadir transacción rápida (cualquier categoría, incluso nueva) */}
+        <Card className="border-slate-200 shadow-md">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold">Añadir transacción rápida</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-2 items-start">
+              <Input
+                list="categories-list"
+                placeholder="Categoría (puede ser nueva)"
+                id="quick-category"
+                className="h-9 text-sm w-full"
+              />
+              <Select onValueChange={(v) => {
+                const el = document.getElementById('quick-type') as HTMLInputElement | null;
+                if (el) el.value = v;
+              }}>
+                <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="income">Ingreso</SelectItem>
+                  <SelectItem value="expense">Gasto</SelectItem>
+                </SelectContent>
+              </Select>
+              <input id="quick-type" type="hidden" />
+              <Input type="date" id="quick-date" defaultValue={defaultNewDate} className="h-9 text-sm w-full" />
+              <Input type="number" step="0.01" placeholder="Importe" id="quick-amount" className="h-9 text-sm w-full xl:col-span-2" />
+              <select id="quick-asset" className="h-9 text-sm border rounded px-2 w-full xl:max-w-[180px]">
+                <option value="">Activo</option>
+                {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+              </select>
+              <select id="quick-related-asset" className="h-9 text-sm border rounded px-2 w-full xl:max-w-[220px]">
+                <option value="">Activo relacionado (opcional)</option>
+                {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+              </select>
+              <select id="quick-liability" className="h-9 text-sm border rounded px-2 w-full xl:max-w-[200px]">
+                <option value="">Pasivo (opcional)</option>
+                {liabilities.map(l => (<option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>))}
+              </select>
+              <Button
+                onClick={() => {
+                  const catEl = document.getElementById('quick-category') as HTMLInputElement | null;
+                  const typeEl = document.getElementById('quick-type') as HTMLInputElement | null;
+                  const dateEl = document.getElementById('quick-date') as HTMLInputElement | null;
+                  const amountEl = document.getElementById('quick-amount') as HTMLInputElement | null;
+                  const assetEl = document.getElementById('quick-asset') as HTMLSelectElement | null;
+                  const relAssetEl = document.getElementById('quick-related-asset') as HTMLSelectElement | null;
+                  const liabEl = document.getElementById('quick-liability') as HTMLSelectElement | null;
+                  const categoryName = catEl?.value?.trim();
+                  const type = (typeEl?.value as 'income' | 'expense' | '') || '';
+                  const date = dateEl?.value || defaultNewDate;
+                  const amount = amountEl?.value ? parseFloat(amountEl.value) : NaN;
+                  const assetId = assetEl?.value ? parseInt(assetEl.value) : undefined;
+                  const relatedAssetId = relAssetEl?.value ? parseInt(relAssetEl.value) : undefined;
+                  const liabilityId = liabEl?.value ? parseInt(liabEl.value) : undefined;
+                  if (!categoryName || !type || isNaN(amount) || amount <= 0) return;
+                  const newLocalId = `new-${Date.now()}-${Math.random()}`;
+                  setRows(prev => ([
+                    ...prev,
+                    {
+                      localId: newLocalId,
+                      isNew: true,
+                      type,
+                      categoryName,
+                      transactionDate: date,
+                      description: '',
+                      amount,
+                      assetId,
+                      relatedAssetId,
+                      liabilityId,
+                    } as Row,
+                  ]));
+                  setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
+                  if (catEl) catEl.value = '';
+                  if (amountEl) amountEl.value = '';
+                  if (assetEl) assetEl.value = '';
+                  if (relAssetEl) relAssetEl.value = '';
+                  if (liabEl) liabEl.value = '';
+                }}
+                className="h-9"
+              >
+                Añadir
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Puedes escribir una categoría nueva. Se creará al guardar.</p>
+          </CardContent>
+        </Card>
 
+        {/* Sección de Ingresos agrupados por categoría */}
         <Card className="border-green-100 shadow-lg">
           <CardHeader className="bg-gradient-to-r from-green-50 to-green-50/50 border-b border-green-100">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -520,146 +860,285 @@ const Transactions: React.FC = () => {
                   <p className="text-sm text-green-700/70 mt-0.5">{incomeRows.length} {incomeRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
-              <Button 
-                onClick={() => addEmptyRow('income')} 
-                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white shadow-md"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Añadir ingreso
-              </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto -mx-2 sm:mx-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-b-2">
-                    <TableHead className="min-w-[120px] font-semibold">Fecha</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Tipo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Activo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Pasivo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Activo relacionado</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Categoría</TableHead>
-                    <TableHead className="text-right min-w-[140px] font-semibold">Cantidad</TableHead>
-                    <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {incomeRows.map((r, idx) => (
-                    <TableRow key={r.localId} className={rowClass(r, idx)}>
-                      <TableCell className="relative">
-                        <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-r ${
-                            r.type === 'income' ? 'bg-green-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-transparent'
-                          }`}
-                        />
-                        <div className="pl-3">
+          <CardContent className="space-y-4 pt-4">
+            {incomeByCategory.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-4">No hay ingresos en el rango de fechas seleccionado</p>
+            ) : (
+              incomeByCategory.map((categoryGroup) => (
+                <Card key={categoryGroup.categoryId || categoryGroup.categoryName} className="shadow-sm border">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
+                        <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-sm">
+                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
+                            </Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                {/* Histórico de transacciones de esta categoría */}
+                {categoryGroup.rows.filter(r => !r.isNew).length > 0 && (
+                  <div className="border rounded-lg p-3 bg-slate-50/50">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Transacciones registradas</h4>
+                    <div className="space-y-2">
+                {categoryGroup.rows.filter(r => !r.isNew).map((r) => (
+                  <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {editingRowIds[r.localId] ? (
+                        <>
                           <Input
                             type="date"
                             value={r.transactionDate}
                             onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
+                            className="h-8 text-xs"
+                            style={{ width: 120 }}
                           />
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <ArrowUpCircle className={`h-5 w-5 ${r.type === 'income' ? 'text-green-600' : 'text-slate-400'}`} />
-                          <Select value={r.type ?? ''} onValueChange={(val: any) => updateRow(r.localId, { type: val as 'income' | 'expense' })}>
-                            <SelectTrigger className="w-[140px]">
-                              <SelectValue placeholder="Tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="income" className="text-green-700">Ingreso</SelectItem>
-                              <SelectItem value="expense" className="text-red-700">Gasto</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {r.isNew && (
-                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
-                              Nuevo
-                            </Badge>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={getAmountDisplayValue(r)}
+                            onChange={(e) => handleAmountChange(r.localId, e.target.value)}
+                            className="h-8 text-sm font-medium max-w-[120px]"
+                          />
+                          <Input
+                            type="text"
+                            placeholder="Descripción"
+                            value={r.description}
+                            onChange={(e) => updateRow(r.localId, { description: e.target.value })}
+                            className="h-8 text-xs flex-1"
+                          />
+                          <select
+                            value={r.assetId ? String(r.assetId) : ''}
+                            onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                            className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                          >
+                            <option value="">Activo</option>
+                            {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+                          </select>
+                          <select
+                            value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
+                            onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                            className="h-8 text-xs border rounded px-2 min-w-[160px]"
+                          >
+                            <option value="">Activo relacionado</option>
+                            {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+                          </select>
+                          <select
+                            value={r.liabilityId ? String(r.liabilityId) : ''}
+                            onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
+                            className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                          >
+                            <option value="">Pasivo</option>
+                            {liabilities.map(l => (<option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>))}
+                          </select>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs text-muted-foreground min-w-[80px]">{safeFormatDate(r.transactionDate)}</span>
+                          <span className={`font-semibold ${r.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                            {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
+                          </span>
+                          {r.description && (
+                            <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">{r.description}</span>
                           )}
-                          {r.isEdited && !r.isNew && (
-                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
-                              Editado
-                            </Badge>
+                        </>
                           )}
                         </div>
-                      </TableCell>
+                    <div className="flex items-center gap-1">
+                      {r.isEdited && (
+                        <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">Editado</Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleEdit(r.localId)}
+                        className="h-7 px-2 hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        {editingRowIds[r.localId] ? 'Cerrar' : 'Editar'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeRow(r.localId)}
+                        className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                    </div>
+                  </div>
+                )}
 
-                      <TableCell>
-                        <input
-                          list="assets-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.assetName ?? assets.find(a => a.assetId === r.assetId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { assetName: e.target.value, assetId: undefined })}
-                          placeholder="Activo"
-                        />
-                      </TableCell>
+                {/* Formulario compacto para añadir nueva transacción */}
+                <div className="border-2 border-dashed rounded-lg p-3 bg-slate-50/30">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
+                    <Input
+                      type="date"
+                      id={`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`}
+                      defaultValue={defaultNewDate}
+                      className="h-9 text-sm w-full"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Importe"
+                      id={`amount-income-${categoryGroup.categoryId || categoryGroup.categoryName}`}
+                      className="h-9 w-full text-sm font-medium lg:col-span-2"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const amountInput = e.target as HTMLInputElement;
+                          const dateInput = document.getElementById(`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                          const assetInput = document.getElementById(`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                          const relatedAssetInput = document.getElementById(`related-asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                          const liabilityInput = document.getElementById(`liability-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                          const amount = parseFloat(amountInput.value);
+                          const date = dateInput?.value || defaultNewDate;
+                          const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
+                          const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
+                          const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                          if (!isNaN(amount) && amount > 0) {
+                            const newLocalId = `new-${Date.now()}-${Math.random()}`;
+                            setRows(prev => [
+                              ...prev,
+                              {
+                                localId: newLocalId,
+                                isNew: true,
+                                type: 'income',
+                                categoryName: categoryGroup.categoryName,
+                                categoryId: categoryGroup.categoryId,
+                                transactionDate: date,
+                                description: '',
+                                amount: amount,
+                                assetId,
+                                relatedAssetId,
+                                liabilityId,
+                              } as Row,
+                            ]);
+                            setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
+                            amountInput.value = '';
+                            if (dateInput) dateInput.value = defaultNewDate;
+                            if (assetInput) assetInput.value = '';
+                            if (relatedAssetInput) relatedAssetInput.value = '';
+                            if (liabilityInput) liabilityInput.value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <select id={`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
+                      <option value="">Activo</option>
+                      {assets.map(a => (
+                        <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                      ))}
+                    </select>
+                    <select id={`related-asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[220px]">
+                      <option value="">Activo relacionado (opcional)</option>
+                      {assets.map(a => (
+                        <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                      ))}
+                    </select>
+                    <select id={`liability-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[200px]">
+                      <option value="">Pasivo (opcional)</option>
+                      {liabilities.map(l => (
+                        <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-muted-foreground">€</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Escribe el importe y presiona Enter para añadir rápidamente</p>
+                </div>
 
-                      <TableCell>
-                        <input
-                          list="liabilities-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.liabilityName ?? liabilities.find(l => l.liabilityId === r.liabilityId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { liabilityName: e.target.value, liabilityId: undefined })}
-                          placeholder="Pasivo"
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <input
-                          list="assets-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.relatedAssetName ?? assets.find(a => a.assetId === r.relatedAssetId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { relatedAssetName: e.target.value, relatedAssetId: undefined })}
-                          placeholder="Activo rel."
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <input
-                          list="categories-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.categoryName ?? categories.find(c => c.categoryId === r.categoryId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { categoryName: e.target.value, categoryId: undefined })}
-                          placeholder="Categoría"
-                        />
-                      </TableCell>
-
-                        <TableCell className="text-right">
-                        <div className="inline-flex items-center justify-end gap-2">
-                          <div className="relative">
+                {/* Nuevas transacciones añadidas (aún no guardadas) */}
+                {categoryGroup.rows.filter(r => r.isNew).length > 0 && (
+                  <div className="border rounded-lg p-3 bg-yellow-50/50 border-yellow-200">
+                    <h4 className="text-sm font-medium text-yellow-900 mb-2">Nuevas (pendientes de guardar)</h4>
+                    <div className="space-y-2">
+                      {categoryGroup.rows.filter(r => r.isNew).map((r) => (
+                        <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-300 hover:bg-yellow-50 transition-colors">
+                          <div className="flex items-center gap-3 flex-1">
+                            <Input
+                              type="date"
+                              value={r.transactionDate}
+                              onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
+                              className="h-8 text-xs"
+                              style={{ width: 120 }}
+                            />
+                            <select
+                              value={r.assetId ? String(r.assetId) : ''}
+                              onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                              className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                            >
+                              <option value="">Activo</option>
+                              {assets.map(a => (
+                                <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
+                              onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                              className="h-8 text-xs border rounded px-2 min-w-[160px]"
+                            >
+                              <option value="">Activo relacionado (opcional)</option>
+                              {assets.map(a => (
+                                <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={r.liabilityId ? String(r.liabilityId) : ''}
+                              onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
+                              className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                            >
+                              <option value="">Pasivo (opcional)</option>
+                              {liabilities.map(l => (
+                                <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
+                              ))}
+                            </select>
                             <Input
                               type="number"
                               step="0.01"
-                              value={r.amount}
-                              onChange={(e) => updateRow(r.localId, { amount: parseFloat(e.target.value || '0') })}
-                              className={`text-right font-semibold text-lg ${r.type === 'income' ? 'text-green-700 bg-green-50/70 border-green-200 focus:border-green-400' : 'text-red-700 bg-red-50/70 border-red-200 focus:border-red-400'}`}
-                              style={{ width: 140 }}
+                              value={getAmountDisplayValue(r)}
+                              onChange={(e) => handleAmountChange(r.localId, e.target.value)}
+                              onFocus={(e) => {
+                                if (r.amount === 0) {
+                                  e.target.select();
+                                }
+                              }}
+                              placeholder="0"
+                              className="h-8 text-sm font-medium flex-1 max-w-[120px]"
                             />
+                            <span className="text-xs text-muted-foreground">€</span>
+                            <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
+                              Nuevo
+                            </Badge>
                           </div>
-                          <span className={`text-sm font-medium ${r.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>€</span>
-                        </div>
-                      </TableCell>
-
-                      <TableCell className="text-center">
                         <Button 
                           variant="ghost" 
                           size="sm" 
                           onClick={() => removeRow(r.localId)}
-                          className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                            className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
                         >
-                          <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3" />
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                        </div>
                   ))}
-                </TableBody>
-              </Table>
             </div>
+                  </div>
+                )}
+                </CardContent>
+              </Card>
+              ))
+            )}
           </CardContent>
         </Card>
 
+        {/* Sección de Gastos agrupados por categoría */}
         <Card className="border-red-100 shadow-lg">
           <CardHeader className="bg-gradient-to-r from-red-50 to-red-50/50 border-b border-red-100">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -672,143 +1151,286 @@ const Transactions: React.FC = () => {
                   <p className="text-sm text-red-700/70 mt-0.5">{expenseRows.length} {expenseRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
-              <Button 
-                onClick={() => addEmptyRow('expense')} 
-                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white shadow-md"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Añadir gasto
-              </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto -mx-2 sm:mx-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-b-2">
-                    <TableHead className="min-w-[120px] font-semibold">Fecha</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Tipo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Activo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Pasivo</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Activo relacionado</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Categoría</TableHead>
-                    <TableHead className="text-right min-w-[140px] font-semibold">Cantidad</TableHead>
-                    <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expenseRows.map((r, idx) => (
-                    <TableRow key={r.localId} className={rowClass(r, idx)}>
-                      <TableCell className="relative">
-                        <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-r ${
-                            r.type === 'income' ? 'bg-green-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-transparent'
-                          }`}
-                        />
-                        <div className="pl-3">
-                          <Input
-                            type="date"
-                            value={r.transactionDate}
-                            onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
-                          />
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
+          <CardContent className="space-y-4 pt-4">
+            {expenseByCategory.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-4">No hay gastos en el rango de fechas seleccionado</p>
+            ) : (
+              expenseByCategory.map((categoryGroup) => (
+                <Card key={categoryGroup.categoryId || categoryGroup.categoryName} className="shadow-sm border">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
                         <div className="flex items-center gap-2">
-                          <ArrowDownCircle className={`h-5 w-5 ${r.type === 'expense' ? 'text-red-600' : 'text-slate-400'}`} />
-                          <Select value={r.type ?? ''} onValueChange={(val: any) => updateRow(r.localId, { type: val as 'income' | 'expense' })}>
-                            <SelectTrigger className="w-[140px]">
-                              <SelectValue placeholder="Tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="income" className="text-green-700">Ingreso</SelectItem>
-                              <SelectItem value="expense" className="text-red-700">Gasto</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {r.isNew && (
-                            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
-                              Nuevo
+                        <Badge variant="outline" className="text-sm">
+                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
                             </Badge>
-                          )}
-                          {r.isEdited && !r.isNew && (
-                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
-                              Editado
-                            </Badge>
-                          )}
+                        <Badge variant="secondary" className="text-xs">
+                          {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Histórico de transacciones de esta categoría */}
+                    {categoryGroup.rows.filter(r => !r.isNew).length > 0 && (
+                      <div className="border rounded-lg p-3 bg-slate-50/50">
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Transacciones registradas</h4>
+                        <div className="space-y-2">
+                          {categoryGroup.rows.filter(r => !r.isNew).map((r) => (
+                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-3 flex-1">
+                                {editingRowIds[r.localId] ? (
+                                  <>
+                                    <Input
+                                      type="date"
+                                      value={r.transactionDate}
+                                      onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
+                                      className="h-8 text-xs"
+                                      style={{ width: 120 }}
+                                    />
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={getAmountDisplayValue(r)}
+                                      onChange={(e) => handleAmountChange(r.localId, e.target.value)}
+                                      className="h-8 text-sm font-medium max-w-[120px]"
+                                    />
+                                    <Input
+                                      type="text"
+                                      placeholder="Descripción"
+                                      value={r.description}
+                                      onChange={(e) => updateRow(r.localId, { description: e.target.value })}
+                                      className="h-8 text-xs flex-1"
+                                    />
+                                    <select
+                                      value={r.assetId ? String(r.assetId) : ''}
+                                      onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                      className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                                    >
+                                      <option value="">Activo</option>
+                                      {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+                                    </select>
+                                    <select
+                                      value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
+                                      onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                      className="h-8 text-xs border rounded px-2 min-w-[160px]"
+                                    >
+                                      <option value="">Activo relacionado</option>
+                                      {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
+                                    </select>
+                                    <select
+                                      value={r.liabilityId ? String(r.liabilityId) : ''}
+                                      onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                      className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                                    >
+                                      <option value="">Pasivo</option>
+                                      {liabilities.map(l => (<option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>))}
+                                    </select>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-xs text-muted-foreground min-w-[80px]">{safeFormatDate(r.transactionDate)}</span>
+                                    <span className={`font-semibold ${r.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                                      {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
+                                    </span>
+                                    {r.description && (
+                                      <span className="text-sm text-muted-foreground truncate flex-1">{r.description}</span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {r.isEdited && (
+                                  <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                                    Editado
+                                  </Badge>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleEdit(r.localId)}
+                                  className="h-7 px-2 hover:bg-blue-50 hover:text-blue-600"
+                                >
+                                  {editingRowIds[r.localId] ? 'Cerrar' : 'Editar'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeRow(r.localId)}
+                                  className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </TableCell>
+                      </div>
+                    )}
 
-                      <TableCell>
-                        <input
-                          list="assets-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.assetName ?? assets.find(a => a.assetId === r.assetId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { assetName: e.target.value, assetId: undefined })}
-                          placeholder="Activo"
+                    {/* Formulario compacto para añadir nueva transacción */}
+                    <div className="border-2 border-dashed rounded-lg p-3 bg-slate-50/30">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
+                        <Input
+                          type="date"
+                          id={`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`}
+                          defaultValue={defaultNewDate}
+                          className="h-9 text-sm w-full"
                         />
-                      </TableCell>
-
-                      <TableCell>
-                        <input
-                          list="liabilities-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.liabilityName ?? liabilities.find(l => l.liabilityId === r.liabilityId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { liabilityName: e.target.value, liabilityId: undefined })}
-                          placeholder="Pasivo"
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Importe"
+                          id={`amount-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`}
+                          className="h-9 w-full text-sm font-medium lg:col-span-2"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const amountInput = e.target as HTMLInputElement;
+                              const dateInput = document.getElementById(`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                              const assetInput = document.getElementById(`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                              const relatedAssetInput = document.getElementById(`related-asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                              const liabilityInput = document.getElementById(`liability-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                              const amount = parseFloat(amountInput.value);
+                              const date = dateInput?.value || defaultNewDate;
+                              const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
+                              const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
+                              const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                              if (!isNaN(amount) && amount > 0) {
+                                const newLocalId = `new-${Date.now()}-${Math.random()}`;
+                                setRows(prev => [
+                                  ...prev,
+                                  {
+                                    localId: newLocalId,
+                                    isNew: true,
+                                    type: 'expense',
+                                    categoryName: categoryGroup.categoryName,
+                                    categoryId: categoryGroup.categoryId,
+                                    transactionDate: date,
+                                    description: '',
+                                    amount: amount,
+                                    assetId,
+                                    relatedAssetId,
+                                    liabilityId,
+                                  } as Row,
+                                ]);
+                                setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
+                                amountInput.value = '';
+                                if (dateInput) dateInput.value = defaultNewDate;
+                                if (assetInput) assetInput.value = '';
+                                if (relatedAssetInput) relatedAssetInput.value = '';
+                                if (liabilityInput) liabilityInput.value = '';
+                              }
+                            }
+                          }}
                         />
-                      </TableCell>
+                        <select id={`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
+                          <option value="">Activo</option>
+                          {assets.map(a => (
+                            <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                          ))}
+                        </select>
+                        <select id={`related-asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[220px]">
+                          <option value="">Activo relacionado (opcional)</option>
+                          {assets.map(a => (
+                            <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                          ))}
+                        </select>
+                        <select id={`liability-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[200px]">
+                          <option value="">Pasivo (opcional)</option>
+                          {liabilities.map(l => (
+                            <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
+                          ))}
+                        </select>
+                        <span className="text-sm text-muted-foreground">€</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">Escribe el importe y presiona Enter para añadir rápidamente</p>
+                    </div>
 
-                      <TableCell>
-                        <input
-                          list="assets-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.relatedAssetName ?? assets.find(a => a.assetId === r.relatedAssetId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { relatedAssetName: e.target.value, relatedAssetId: undefined })}
-                          placeholder="Activo rel."
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <input
-                          list="categories-list"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-w-[120px]"
-                          value={r.categoryName ?? categories.find(c => c.categoryId === r.categoryId)?.name ?? ''}
-                          onChange={(e) => updateRow(r.localId, { categoryName: e.target.value, categoryId: undefined })}
-                          placeholder="Categoría"
-                        />
-                      </TableCell>
-
-                      <TableCell className="text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
+                    {/* Nuevas transacciones añadidas (aún no guardadas) */}
+                    {categoryGroup.rows.filter(r => r.isNew).length > 0 && (
+                      <div className="border rounded-lg p-3 bg-yellow-50/50 border-yellow-200">
+                        <h4 className="text-sm font-medium text-yellow-900 mb-2">Nuevas (pendientes de guardar)</h4>
+                        <div className="space-y-2">
+                          {categoryGroup.rows.filter(r => r.isNew).map((r) => (
+                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-300 hover:bg-yellow-50 transition-colors">
+                              <div className="flex items-center gap-3 flex-1">
+                                <Input
+                                  type="date"
+                                  value={r.transactionDate}
+                                  onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
+                                  className="h-8 text-xs"
+                                  style={{ width: 120 }}
+                                />
+                                <select
+                                  value={r.assetId ? String(r.assetId) : ''}
+                                  onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                  className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                                >
+                                  <option value="">Activo</option>
+                                  {assets.map(a => (
+                                    <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
+                                  onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                  className="h-8 text-xs border rounded px-2 min-w-[160px]"
+                                >
+                                  <option value="">Activo relacionado (opcional)</option>
+                                  {assets.map(a => (
+                                    <option key={a.assetId} value={a.assetId}>{a.name}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={r.liabilityId ? String(r.liabilityId) : ''}
+                                  onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
+                                  className="h-8 text-xs border rounded px-2 min-w-[140px]"
+                                >
+                                  <option value="">Pasivo (opcional)</option>
+                                  {liabilities.map(l => (
+                                    <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
+                                  ))}
+                                </select>
                             <Input
                               type="number"
                               step="0.01"
-                              value={r.amount}
-                              onChange={(e) => updateRow(r.localId, { amount: parseFloat(e.target.value || '0') })}
-                              className={`text-right font-medium ${r.type === 'expense' ? 'text-red-700 bg-red-50/50' : ''}`}
-                              style={{ width: 120 }}
-                            />
-                            <span className="text-sm text-slate-600">€</span>
+                                  value={getAmountDisplayValue(r)}
+                                  onChange={(e) => handleAmountChange(r.localId, e.target.value)}
+                                  onFocus={(e) => {
+                                    if (r.amount === 0) {
+                                      e.target.select();
+                                    }
+                                  }}
+                                  placeholder="0"
+                                  className="h-8 text-sm font-medium flex-1 max-w-[120px]"
+                                />
+                                <span className="text-xs text-muted-foreground">€</span>
+                                <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
+                                  Nuevo
+                                </Badge>
                           </div>
-                      </TableCell>
-
-                      <TableCell className="text-center">
                         <Button 
                           variant="ghost" 
                           size="sm" 
                           onClick={() => removeRow(r.localId)}
-                          className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                                className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
                         >
-                          <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3 w-3" />
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                            </div>
                   ))}
-                </TableBody>
-              </Table>
             </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </CardContent>
         </Card>
+
 
         <datalist id="categories-list">
           {categories.map(c => <option key={c.categoryId} value={c.name} />)}

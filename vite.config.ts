@@ -1,10 +1,18 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  // Cargar variables de entorno (lee .env.local, .env, etc.)
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  // Leer la URL del backend desde variable de entorno o usar por defecto
+  const apiUrl = env.VITE_API_URL || 'http://46.101.144.147:8080';
+  const proxyTarget = apiUrl.endsWith('/api') ? apiUrl.replace('/api', '') : apiUrl;
+  
+  return {
   server: {
     host: "::",
     port: 8080,
@@ -14,7 +22,7 @@ export default defineConfig(({ mode }) => ({
     strictPort: false,
     proxy: {
       '/api': {
-        target: 'http://46.101.144.147:8080',
+        target: proxyTarget,
         changeOrigin: true,
         secure: true,
       }
@@ -35,4 +43,5 @@ export default defineConfig(({ mode }) => ({
       }
     }
   }
-}));
+  };
+});

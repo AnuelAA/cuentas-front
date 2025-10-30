@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAssets, getAssetRoi, getTransactions, getCategories } from '@/services/api';
-import type { Asset, AssetRoi, Transaction, Category } from '@/types/api';
+import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation } from '@/services/api';
+import type { Asset, AssetRoi, Transaction, Category, AssetType } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,6 @@ import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
 import { startOfMonth, format as formatDate } from 'date-fns';
-import { createAsset, updateAsset, addAssetValuation } from '@/services/api';
 
 const Assets: React.FC = () => {
   const { user } = useAuth();
@@ -38,6 +37,7 @@ const Assets: React.FC = () => {
   const [assetTransactions, setAssetTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [assetTypes, setAssetTypes] = useState<AssetType[]>([]);
     const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
     const [assetModalOpen, setAssetModalOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -119,6 +119,7 @@ const Assets: React.FC = () => {
     if (user?.userId) {
       fetchAssets();
       fetchCategories();
+      getAssetTypes().then(setAssetTypes).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -181,10 +182,17 @@ const Assets: React.FC = () => {
       if (!user?.userId) return;
       try {
         let saved: Asset;
+        const typeSelect = document.getElementById('asset-type-select') as HTMLSelectElement | null;
         if (editingAsset) {
-          saved = await updateAsset(user.userId, editingAsset.assetId, { name: assetForm.name, acquisitionValue: assetForm.acquisitionValue });
+          const maybeTypeId = typeSelect && typeSelect.value ? parseInt(typeSelect.value) : undefined;
+          saved = await updateAsset(user.userId, editingAsset.assetId, { name: assetForm.name, assetTypeId: maybeTypeId, acquisitionValue: assetForm.acquisitionValue });
         } else {
-          saved = await createAsset(user.userId, { name: assetForm.name, acquisitionValue: assetForm.acquisitionValue, currentValue: assetForm.currentValue });
+          const assetTypeId = typeSelect && typeSelect.value ? parseInt(typeSelect.value) : NaN;
+          if (!assetTypeId || isNaN(assetTypeId)) {
+            toast.error('Selecciona el tipo de activo');
+            return;
+          }
+          saved = await createAsset(user.userId, { name: assetForm.name, assetTypeId, acquisitionValue: assetForm.acquisitionValue, currentValue: assetForm.currentValue });
         }
         await addAssetValuation(user.userId, saved.assetId, {
           valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
@@ -389,6 +397,7 @@ const Assets: React.FC = () => {
                   <TableHeader>
                     <TableRow className="hover:bg-transparent border-b-2">
                       <TableHead className="min-w-[150px] font-semibold">Nombre</TableHead>
+                      <TableHead className="min-w-[140px] font-semibold">Tipo</TableHead>
                       <TableHead className="text-right min-w-[140px] font-semibold">Valor Adquisición</TableHead>
                       <TableHead className="text-right min-w-[120px] font-semibold">Valor Actual</TableHead>
                       <TableHead className="text-right min-w-[120px] font-semibold">ROI</TableHead>
@@ -418,6 +427,7 @@ const Assets: React.FC = () => {
                       return (
                         <TableRow key={asset.assetId} className="hover:bg-slate-50/50 transition-colors">
                           <TableCell className="font-semibold">{asset.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{assetTypes.find(t => t.assetTypeId === asset.assetTypeId)?.name ?? `#${asset.assetTypeId}`}</TableCell>
                           <TableCell className="text-right font-medium text-muted-foreground">
                             {formatCurrency(asset.acquisitionValue)}
                           </TableCell>
@@ -486,6 +496,13 @@ const Assets: React.FC = () => {
             <div className="grid gap-3">
               <Label>Nombre</Label>
               <Input value={assetForm.name} onChange={(e) => setAssetForm(f => ({ ...f, name: e.target.value }))} />
+              <Label>Tipo de activo</Label>
+              <select id="asset-type-select" className="h-9 text-sm border rounded px-2" defaultValue={editingAsset ? String(editingAsset.assetTypeId) : ''}>
+                <option value="">Selecciona un tipo</option>
+                {assetTypes.map(t => (
+                  <option key={t.assetTypeId} value={t.assetTypeId}>{t.name}</option>
+                ))}
+              </select>
               <Label>Valor adquisición</Label>
               <Input type="number" value={String(assetForm.acquisitionValue)} onChange={(e) => setAssetForm(f => ({ ...f, acquisitionValue: Number(e.target.value || 0) }))} />
               <Label>Valor actual (para la valoración del mes)</Label>

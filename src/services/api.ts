@@ -404,7 +404,7 @@ export const exportExcel = async (
 // ----- Assets: crear/actualizar/valuación (stubs) -----
 export const createAsset = async (
   userId: number,
-  payload: { name: string; acquisitionValue?: number; currentValue?: number }
+  payload: { name: string; assetTypeId: number; acquisitionValue?: number; currentValue?: number }
 ): Promise<Asset> => {
   const response = await api.post<Asset>(`/users/${userId}/assets`, payload);
   return response.data;
@@ -413,7 +413,7 @@ export const createAsset = async (
 export const updateAsset = async (
   userId: number,
   assetId: number,
-  payload: Partial<{ name: string; acquisitionValue?: number; currentValue?: number }>
+  payload: Partial<{ name: string; assetTypeId?: number; acquisitionValue?: number; currentValue?: number }>
 ): Promise<Asset> => {
   const response = await api.put<Asset>(`/users/${userId}/assets/${assetId}`, payload);
   return response.data;
