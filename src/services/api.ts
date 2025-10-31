@@ -17,6 +17,8 @@ import type {
   AssetRoi,
   DashboardSummary,
   AssetType,
+  LiabilityType,
+  Interest,
 } from '@/types/api';
 
 // URL base fija al backend; permite override con VITE_API_URL si se define
@@ -172,6 +174,12 @@ export const getAssets = async (userId: number): Promise<Asset[]> => {
 // Asset Types
 export const getAssetTypes = async (): Promise<AssetType[]> => {
   const response = await api.get<AssetType[]>('/asset-types');
+  return response.data;
+};
+
+// Liability Types
+export const getLiabilityTypes = async (): Promise<LiabilityType[]> => {
+  const response = await api.get<LiabilityType[]>('/liability-types');
   return response.data;
 };
 
@@ -428,10 +436,16 @@ export const addAssetValuation = async (
   return response.data;
 };
 
-// ----- Liabilities: crear/actualizar/snapshot (stubs) -----
+// ----- Liabilities: crear/actualizar/snapshot/interests -----
 export const createLiability = async (
   userId: number,
-  payload: { name: string; principalAmount?: number; outstandingBalance?: number }
+  payload: { 
+    name: string; 
+    liabilityTypeId: number; 
+    description?: string; 
+    principalAmount?: number; 
+    startDate?: string;
+  }
 ): Promise<Liability> => {
   const response = await api.post<Liability>(`/users/${userId}/liabilities`, payload);
   return response.data;
@@ -440,7 +454,13 @@ export const createLiability = async (
 export const updateLiability = async (
   userId: number,
   liabilityId: number,
-  payload: Partial<{ name: string; principalAmount?: number; outstandingBalance?: number }>
+  payload: Partial<{ 
+    name: string; 
+    liabilityTypeId?: number; 
+    description?: string; 
+    principalAmount?: number; 
+    startDate?: string;
+  }>
 ): Promise<Liability> => {
   const response = await api.put<Liability>(`/users/${userId}/liabilities/${liabilityId}`, payload);
   return response.data;
@@ -453,6 +473,41 @@ export const addLiabilitySnapshot = async (
 ): Promise<any> => {
   const response = await api.post(`/users/${userId}/liabilities/${liabilityId}/values`, payload);
   return response.data;
+};
+
+export const createLiabilityInterest = async (
+  userId: number,
+  liabilityId: number,
+  payload: { 
+    type?: 'fixed' | 'variable' | 'general';
+    annualRate?: number;
+    startDate: string;
+  }
+): Promise<any> => {
+  const response = await api.post(`/users/${userId}/liabilities/${liabilityId}/interests`, payload);
+  return response.data;
+};
+
+export const getLiabilityInterests = async (
+  userId: number,
+  liabilityId: number
+): Promise<Interest[]> => {
+  const response = await api.get<Interest[]>(`/users/${userId}/liabilities/${liabilityId}/interests`);
+  return response.data;
+};
+
+export const deleteLiability = async (
+  userId: number,
+  liabilityId: number
+): Promise<void> => {
+  await api.delete(`/users/${userId}/liabilities/${liabilityId}`);
+};
+
+export const deleteAsset = async (
+  userId: number,
+  assetId: number
+): Promise<void> => {
+  await api.delete(`/users/${userId}/assets/${assetId}`);
 };
 
 export default api;

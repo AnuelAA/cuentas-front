@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation } from '@/services/api';
+import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, deleteAsset } from '@/services/api';
 import type { Asset, AssetRoi, Transaction, Category, AssetType } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,10 +19,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign, Calendar, Trash2, Pencil } from 'lucide-react';
 import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
@@ -49,6 +59,8 @@ const Assets: React.FC = () => {
     const [valuationModalOpen, setValuationModalOpen] = useState(false);
     const [valuationDate, setValuationDate] = useState<string>(formatDate(selectedMonth, 'yyyy-MM-01'));
     const [assetValuations, setAssetValuations] = useState<Record<number, { currentValue: string; acquisitionValue?: string }>>({});
+    const [deleteAssetDialogOpen, setDeleteAssetDialogOpen] = useState(false);
+    const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
   // Obtiene el assetValue para el mes seleccionado (valor + fecha)
   const getAssetValueForMonth = (asset: Asset, month: Date): { value: number; date: Date | null } => {
     if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
@@ -194,17 +206,35 @@ const Assets: React.FC = () => {
           }
           saved = await createAsset(user.userId, { name: assetForm.name, assetTypeId, acquisitionValue: assetForm.acquisitionValue, currentValue: assetForm.currentValue });
         }
-        await addAssetValuation(user.userId, saved.assetId, {
-          valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
-          currentValue: assetForm.currentValue,
-          acquisitionValue: assetForm.acquisitionValue,
-        });
-        toast.success('Activo guardado y valoración añadida');
+        if (!editingAsset) {
+          await addAssetValuation(user.userId, saved.assetId, {
+            valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
+            currentValue: assetForm.currentValue,
+            acquisitionValue: assetForm.acquisitionValue,
+          });
+          toast.success('Activo guardado y valoración añadida');
+        } else {
+          toast.success('Activo actualizado correctamente');
+        }
         setAssetModalOpen(false);
         fetchAssets();
       } catch (err) {
         console.error(err);
         toast.error('Error guardando activo');
+      }
+    };
+
+    const handleDeleteAsset = async () => {
+      if (!user?.userId || !assetToDelete) return;
+      try {
+        await deleteAsset(user.userId, assetToDelete.assetId);
+        toast.success('Activo eliminado correctamente');
+        setDeleteAssetDialogOpen(false);
+        setAssetToDelete(null);
+        fetchAssets();
+      } catch (err) {
+        console.error(err);
+        toast.error('Error eliminando activo');
       }
     };
 
@@ -470,14 +500,38 @@ const Assets: React.FC = () => {
                           </TableCell>
 
                           <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewDetails(asset)}
-                              className="hover:bg-primary/10 hover:text-primary transition-colors"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openAssetModal(asset)}
+                                className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                title="Editar activo"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewDetails(asset)}
+                                className="hover:bg-primary/10 hover:text-primary transition-colors"
+                                title="Ver detalles"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setAssetToDelete(asset);
+                                  setDeleteAssetDialogOpen(true);
+                                }}
+                                className="hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Eliminar activo"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -505,11 +559,18 @@ const Assets: React.FC = () => {
               </select>
               <Label>Valor adquisición</Label>
               <Input type="number" value={String(assetForm.acquisitionValue)} onChange={(e) => setAssetForm(f => ({ ...f, acquisitionValue: Number(e.target.value || 0) }))} />
-              <Label>Valor actual (para la valoración del mes)</Label>
-              <Input type="number" value={String(assetForm.currentValue)} onChange={(e) => setAssetForm(f => ({ ...f, currentValue: Number(e.target.value || 0) }))} />
+              {!editingAsset && (
+                <>
+                  <Label>Valor actual (para la valoración del mes)</Label>
+                  <Input type="number" value={String(assetForm.currentValue)} onChange={(e) => setAssetForm(f => ({ ...f, currentValue: Number(e.target.value || 0) }))} />
+                </>
+              )}
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setAssetModalOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
-                <Button onClick={saveAssetForMonth} className="w-full sm:w-auto"><Save className="h-4 w-4 mr-2" /> Guardar y añadir valoración ({formatDate(selectedMonth, 'MMMM yyyy')})</Button>
+                <Button onClick={saveAssetForMonth} className="w-full sm:w-auto">
+                  <Save className="h-4 w-4 mr-2" /> 
+                  {editingAsset ? 'Guardar cambios' : `Guardar y añadir valoración (${formatDate(selectedMonth, 'MMMM yyyy')})`}
+                </Button>
               </div>
             </div>
           </DialogContent>
@@ -712,6 +773,30 @@ const Assets: React.FC = () => {
             )}
           </DialogContent>
         </Dialog>
+        <AlertDialog open={deleteAssetDialogOpen} onOpenChange={setDeleteAssetDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción eliminará permanentemente el activo "{assetToDelete?.name}" y todos sus datos relacionados:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Todos los valores asociados</li>
+                  <li>Todas las transacciones relacionadas</li>
+                </ul>
+                <strong className="text-destructive mt-2 block">Esta operación NO SE PUEDE DESHACER.</strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAsset}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );

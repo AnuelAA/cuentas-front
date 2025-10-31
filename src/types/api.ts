@@ -161,3 +161,18 @@ export interface AssetType {
   description?: string;
   isCheckingAccount?: boolean; // Indica si este tipo es considerado "cuenta corriente" para el cuadre de caja
 }
+
+export interface LiabilityType {
+  liabilityTypeId: number;
+  name: string;
+  description?: string;
+}
+
+export interface Interest {
+  interestId: number;
+  liabilityId: number;
+  type: 'fixed' | 'variable' | 'general';
+  annualRate: number;
+  startDate: string;
+  createdAt?: string;
+}
