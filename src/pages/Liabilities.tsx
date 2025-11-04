@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getLiabilities, getLiabilityProgress, getTransactions, getCategories, getLiabilityTypes, createLiability, updateLiability, addLiabilitySnapshot, createLiabilityInterest, deleteLiability, getLiabilityInterests } from '@/services/api';
+import { getLiabilities, getLiabilityProgress, getTransactions, getCategories, getLiabilityTypes, createLiability, updateLiability, addLiabilitySnapshot, createLiabilityInterest, updateLiabilityInterest, deleteLiabilityInterest, deleteLiability, getLiabilityInterests } from '@/services/api';
 import type { Liability, LiabilityProgress, Transaction, Category, LiabilityType, Interest } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -85,11 +85,14 @@ const Liabilities: React.FC = () => {
     const [liabilityToDelete, setLiabilityToDelete] = useState<Liability | null>(null);
     const [interestModalOpen, setInterestModalOpen] = useState(false);
     const [selectedLiabilityForInterest, setSelectedLiabilityForInterest] = useState<Liability | null>(null);
+    const [editingInterest, setEditingInterest] = useState<Interest | null>(null);
     const [interestForm, setInterestForm] = useState<{ type: 'fixed' | 'variable' | 'general'; annualRate: number; startDate: string }>({
       type: 'fixed',
       annualRate: 0,
       startDate: '',
     });
+    const [deleteInterestDialogOpen, setDeleteInterestDialogOpen] = useState(false);
+    const [interestToDelete, setInterestToDelete] = useState<{ liability: Liability; interest: Interest } | null>(null);
   // Calcular cuota mensual basada en el sistema de amortización francés
   const calculateMonthlyPayment = (
     principal: number,
@@ -154,6 +157,20 @@ const Liabilities: React.FC = () => {
       .sort((a, b) => b._date.getTime() - a._date.getTime());
     
     return sorted.length > 0 && sorted[0].endDate ? sorted[0].endDate : null;
+  };
+
+  // Helper: obtener el interés activo actual (según startDate)
+  const getCurrentInterest = (interests: Interest[]): Interest | null => {
+    if (!interests || interests.length === 0) return null;
+    
+    const today = new Date();
+    // Filtrar los intereses cuyo startDate sea <= hoy
+    const validInterests = interests
+      .map(i => ({ ...i, _date: parseISO(i.startDate) }))
+      .filter(i => isValid(i._date) && i._date <= today)
+      .sort((a, b) => b._date.getTime() - a._date.getTime());
+    
+    return validInterests.length > 0 ? validInterests[0] : null;
   };
 
   // Helper: obtener snapshot de liabilityValues para el mes seleccionado
@@ -404,20 +421,58 @@ const Liabilities: React.FC = () => {
           startDate: interestForm.startDate,
         };
         console.log('Enviando payload de interés:', payload); // Debug
-        await createLiabilityInterest(user.userId, selectedLiabilityForInterest.liabilityId, payload);
+        
+        if (editingInterest) {
+          // Actualizar interés existente
+          await updateLiabilityInterest(user.userId, selectedLiabilityForInterest.liabilityId, editingInterest.interestId, payload);
+          toast.success('Interés actualizado correctamente');
+        } else {
+          // Crear nuevo interés
+          await createLiabilityInterest(user.userId, selectedLiabilityForInterest.liabilityId, payload);
+          toast.success('Interés registrado correctamente');
+        }
+        
         // Recargar intereses para este pasivo
         const updatedInterests = await getLiabilityInterests(user.userId, selectedLiabilityForInterest.liabilityId);
         setLiabilityInterests(prev => ({
           ...prev,
           [selectedLiabilityForInterest.liabilityId]: updatedInterests || []
         }));
-        toast.success('Interés registrado correctamente');
+        
         setInterestModalOpen(false);
         setSelectedLiabilityForInterest(null);
+        setEditingInterest(null);
         setInterestForm({ type: 'fixed', annualRate: 0, startDate: '' });
       } catch (err) {
         console.error(err);
-        toast.error('Error registrando interés');
+        toast.error(editingInterest ? 'Error actualizando interés' : 'Error registrando interés');
+      }
+    };
+
+    const handleDeleteInterest = async () => {
+      if (!user?.userId || !interestToDelete) return;
+      
+      try {
+        await deleteLiabilityInterest(
+          user.userId, 
+          interestToDelete.liability.liabilityId, 
+          interestToDelete.interest.interestId
+        );
+        
+        // Recargar intereses para este pasivo
+        const updatedInterests = await getLiabilityInterests(user.userId, interestToDelete.liability.liabilityId);
+        setLiabilityInterests(prev => ({
+          ...prev,
+          [interestToDelete.liability.liabilityId]: updatedInterests || []
+        }));
+        
+        toast.success('Interés eliminado correctamente');
+        setDeleteInterestDialogOpen(false);
+        setInterestToDelete(null);
+        fetchLiabilities();
+      } catch (err) {
+        console.error(err);
+        toast.error('Error eliminando interés');
       }
     };
 
@@ -631,7 +686,7 @@ const Liabilities: React.FC = () => {
                       const progress = calculateProgress(l);
                       const liabilityType = liabilityTypes.find(t => t.liabilityTypeId === l.liabilityTypeId);
                       const interests = liabilityInterests[l.liabilityId] || [];
-                      const activeInterest = interests.length > 0 ? interests[0] : null; // Usamos el primero (normalmente solo hay uno)
+                      const activeInterest = getCurrentInterest(interests); // Obtener el interés activo actual
                       const annualRate = activeInterest?.annualRate ?? 0;
                       const latestEndDate = getLatestEndDate(l);
                       const endDateForCalculation = latestEndDate || (snapshot.endDate ? format(snapshot.endDate, 'yyyy-MM-dd') : null);
@@ -657,9 +712,12 @@ const Liabilities: React.FC = () => {
                                 <span className="text-sm font-medium">{interestTypeLabel}</span>
                                 {activeInterest && annualRate > 0 && (
                                   <span className="text-xs text-muted-foreground">
-                                    {activeInterest.startDate ? format(parseISO(activeInterest.startDate), 'dd/MM/yyyy') : ''}
-                                    {activeInterest.startDate && latestEndDate ? ' - ' : ''}
-                                    {latestEndDate ? format(parseISO(latestEndDate), 'dd/MM/yyyy') : ''}
+                                    Desde {activeInterest.startDate ? format(parseISO(activeInterest.startDate), 'dd/MM/yyyy') : ''}
+                                  </span>
+                                )}
+                                {interests.length > 1 && (
+                                  <span className="text-xs text-blue-600">
+                                    +{interests.length - 1} histórico{interests.length > 2 ? 's' : ''}
                                   </span>
                                 )}
                               </div>
@@ -669,17 +727,17 @@ const Liabilities: React.FC = () => {
                                 className="h-6 px-2 text-xs shrink-0"
                                 onClick={() => {
                                   setSelectedLiabilityForInterest(l);
-                                  const existingInterest = liabilityInterests[l.liabilityId]?.[0];
+                                  setEditingInterest(null);
                                   setInterestForm({ 
-                                    type: existingInterest?.type || 'fixed', 
-                                    annualRate: existingInterest?.annualRate || 0, 
-                                    startDate: existingInterest?.startDate || l.startDate || formatDate(new Date(), 'yyyy-MM-dd') 
+                                    type: 'fixed', 
+                                    annualRate: 0, 
+                                    startDate: formatDate(new Date(), 'yyyy-MM-dd') 
                                   });
                                   setInterestModalOpen(true);
                                 }}
                               >
                                 <DollarSign className="h-3 w-3 mr-1" />
-                                Interés
+                                Gestionar
                               </Button>
                             </div>
                           </TableCell>
@@ -1115,70 +1173,169 @@ const Liabilities: React.FC = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Dialog open={interestModalOpen} onOpenChange={setInterestModalOpen}>
-          <DialogContent className="max-w-lg w-[95vw] sm:w-full">
+        <Dialog open={interestModalOpen} onOpenChange={(open) => {
+          setInterestModalOpen(open);
+          if (!open) {
+            setEditingInterest(null);
+            setInterestForm({ type: 'fixed', annualRate: 0, startDate: '' });
+          }
+        }}>
+          <DialogContent className="max-w-3xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Registrar interés - {selectedLiabilityForInterest?.name}</DialogTitle>
+              <DialogTitle>Gestionar intereses - {selectedLiabilityForInterest?.name}</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-3">
-              <div>
-                <Label htmlFor="interestType">Tipo de interés</Label>
-                <Select
-                  value={interestForm.type}
-                  onValueChange={(value: 'fixed' | 'variable' | 'general') => setInterestForm(f => ({ ...f, type: value }))}
-                >
-                  <SelectTrigger id="interestType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fixed">Fijo</SelectItem>
-                    <SelectItem value="variable">Variable</SelectItem>
-                    <SelectItem value="general">General</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="space-y-4">
+              {/* Historial de intereses */}
+              {selectedLiabilityForInterest && liabilityInterests[selectedLiabilityForInterest.liabilityId]?.length > 0 && (
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-3">Historial de intereses</h3>
+                  <div className="space-y-2">
+                    {liabilityInterests[selectedLiabilityForInterest.liabilityId]
+                      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+                      .map((interest) => {
+                        const isActive = getCurrentInterest(liabilityInterests[selectedLiabilityForInterest.liabilityId])?.interestId === interest.interestId;
+                        return (
+                          <div key={interest.interestId} className={`flex items-center justify-between p-3 rounded ${isActive ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{interest.annualRate}% - {interest.type === 'fixed' ? 'Fijo' : interest.type === 'variable' ? 'Variable' : 'General'}</span>
+                                {isActive && <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Activo</span>}
+                              </div>
+                              <span className="text-sm text-muted-foreground">Desde {format(parseISO(interest.startDate), 'dd/MM/yyyy')}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingInterest(interest);
+                                  setInterestForm({
+                                    type: interest.type,
+                                    annualRate: interest.annualRate,
+                                    startDate: interest.startDate
+                                  });
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setInterestToDelete({ liability: selectedLiabilityForInterest, interest });
+                                  setDeleteInterestDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario para crear/editar */}
+              <div className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-3">{editingInterest ? 'Editar interés' : 'Nuevo interés'}</h3>
+                <div className="grid gap-3">
+                  <div>
+                    <Label htmlFor="interestType">Tipo de interés</Label>
+                    <Select
+                      value={interestForm.type}
+                      onValueChange={(value: 'fixed' | 'variable' | 'general') => setInterestForm(f => ({ ...f, type: value }))}
+                    >
+                      <SelectTrigger id="interestType">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">Fijo</SelectItem>
+                        <SelectItem value="variable">Variable</SelectItem>
+                        <SelectItem value="general">General</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="interestAnnualRate">Tasa anual (%)</Label>
+                    <Input 
+                      id="interestAnnualRate"
+                      type="number" 
+                      step="0.01"
+                      placeholder="2.5"
+                      value={String(interestForm.annualRate)} 
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setInterestForm(f => ({ ...f, annualRate: value ? Number(value) : 0 }));
+                      }} 
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Ejemplo: 2.5 para 2.5% anual, o 0 para sin interés</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="interestStartDate">Fecha de inicio *</Label>
+                    <Input 
+                      id="interestStartDate"
+                      type="date" 
+                      value={interestForm.startDate} 
+                      onChange={(e) => setInterestForm(f => ({ ...f, startDate: e.target.value }))} 
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {editingInterest ? 'Modifica la fecha si es necesario' : 'Fecha a partir de la cual aplica este interés'}
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                    {editingInterest && (
+                      <Button variant="outline" onClick={() => {
+                        setEditingInterest(null);
+                        setInterestForm({ type: 'fixed', annualRate: 0, startDate: formatDate(new Date(), 'yyyy-MM-dd') });
+                      }} className="w-full sm:w-auto">Cancelar edición</Button>
+                    )}
+                    <Button 
+                      onClick={handleSaveInterest} 
+                      className="w-full sm:w-auto"
+                      disabled={!interestForm.startDate}
+                    >
+                      <Save className="h-4 w-4 mr-2" /> {editingInterest ? 'Actualizar' : 'Guardar nuevo'}
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="interestAnnualRate">Tasa anual (%)</Label>
-                <Input 
-                  id="interestAnnualRate"
-                  type="number" 
-                  step="0.01"
-                  placeholder="2.5"
-                  value={String(interestForm.annualRate)} 
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setInterestForm(f => ({ ...f, annualRate: value ? Number(value) : 0 }));
-                  }} 
-                />
-                <p className="text-xs text-muted-foreground mt-1">Ejemplo: 2.5 para 2.5% anual, o 0 para sin interés</p>
-              </div>
-              <div>
-                <Label htmlFor="interestStartDate">Fecha de inicio *</Label>
-                <Input 
-                  id="interestStartDate"
-                  type="date" 
-                  value={interestForm.startDate} 
-                  onChange={(e) => setInterestForm(f => ({ ...f, startDate: e.target.value }))} 
-                  required
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+
+              <div className="flex justify-end pt-2">
                 <Button variant="ghost" onClick={() => {
                   setInterestModalOpen(false);
                   setSelectedLiabilityForInterest(null);
+                  setEditingInterest(null);
                   setInterestForm({ type: 'fixed', annualRate: 0, startDate: '' });
-                }} className="w-full sm:w-auto">Cancelar</Button>
-                <Button 
-                  onClick={handleSaveInterest} 
-                  className="w-full sm:w-auto"
-                  disabled={!interestForm.startDate}
-                >
-                  <Save className="h-4 w-4 mr-2" /> Guardar interés
-                </Button>
+                }} className="w-full sm:w-auto">Cerrar</Button>
               </div>
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Dialog de confirmación para eliminar interés */}
+        <AlertDialog open={deleteInterestDialogOpen} onOpenChange={setDeleteInterestDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar interés?</AlertDialogTitle>
+              <AlertDialogDescription>
+                ¿Estás seguro de que quieres eliminar el interés de {interestToDelete?.interest.annualRate}% ({interestToDelete?.interest.type}) desde {interestToDelete?.interest.startDate ? format(parseISO(interestToDelete.interest.startDate), 'dd/MM/yyyy') : ''}?
+                <br /><br />
+                <strong>Esta acción no se puede deshacer.</strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setDeleteInterestDialogOpen(false);
+                setInterestToDelete(null);
+              }}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteInterest} className="bg-red-600 hover:bg-red-700">
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );

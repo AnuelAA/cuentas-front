@@ -483,8 +483,8 @@ export const createLiabilityInterest = async (
     annualRate?: number;
     startDate: string;
   }
-): Promise<any> => {
-  const response = await api.post(`/users/${userId}/liabilities/${liabilityId}/interests`, payload);
+): Promise<Interest> => {
+  const response = await api.post<Interest>(`/users/${userId}/liabilities/${liabilityId}/interests`, payload);
   return response.data;
 };
 
@@ -494,6 +494,28 @@ export const getLiabilityInterests = async (
 ): Promise<Interest[]> => {
   const response = await api.get<Interest[]>(`/users/${userId}/liabilities/${liabilityId}/interests`);
   return response.data;
+};
+
+export const updateLiabilityInterest = async (
+  userId: number,
+  liabilityId: number,
+  interestId: number,
+  payload: { 
+    type?: 'fixed' | 'variable' | 'general';
+    annualRate?: number;
+    startDate: string;
+  }
+): Promise<Interest> => {
+  const response = await api.put<Interest>(`/users/${userId}/liabilities/${liabilityId}/interests/${interestId}`, payload);
+  return response.data;
+};
+
+export const deleteLiabilityInterest = async (
+  userId: number,
+  liabilityId: number,
+  interestId: number
+): Promise<void> => {
+  await api.delete(`/users/${userId}/liabilities/${liabilityId}/interests/${interestId}`);
 };
 
 export const deleteLiability = async (
