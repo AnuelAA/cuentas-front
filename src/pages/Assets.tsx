@@ -302,7 +302,6 @@ const Assets: React.FC = () => {
     return sum + value;
   }, 0);
   const totalAcquisition = assets.reduce((sum, a) => sum + (a.acquisitionValue || 0), 0);
-  const overallROI = totalAcquisition > 0 ? ((totalValue - totalAcquisition) / totalAcquisition) * 100 : 0;
 
   return (
     <Layout>
@@ -353,7 +352,7 @@ const Assets: React.FC = () => {
           </div>
 
           {/* Estadísticas rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -376,25 +375,6 @@ const Assets: React.FC = () => {
                   </div>
                   <div className="h-12 w-12 rounded-full bg-purple-500/20 flex items-center justify-center">
                     <BarChart3 className="h-6 w-6 text-purple-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className={`border-2 ${overallROI >= 0 ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-red-200 bg-gradient-to-br from-red-50 to-red-50/50'}`}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1">ROI Promedio</p>
-                    <p className={`text-2xl font-bold ${overallROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      {overallROI.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${overallROI >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                    {overallROI >= 0 ? (
-                      <TrendingUp className={`h-6 w-6 text-green-600`} />
-                    ) : (
-                      <TrendingDown className={`h-6 w-6 text-red-600`} />
-                    )}
                   </div>
                 </div>
               </CardContent>
@@ -430,7 +410,6 @@ const Assets: React.FC = () => {
                       <TableHead className="min-w-[140px] font-semibold">Tipo</TableHead>
                       <TableHead className="text-right min-w-[140px] font-semibold">Valor Adquisición</TableHead>
                       <TableHead className="text-right min-w-[120px] font-semibold">Valor Actual</TableHead>
-                      <TableHead className="text-right min-w-[120px] font-semibold">ROI</TableHead>
                       <TableHead className="text-right min-w-[150px] font-semibold">Rentabilidad anual</TableHead>
                       <TableHead className="text-center min-w-[100px] font-semibold">Acciones</TableHead>
                     </TableRow>
@@ -438,10 +417,7 @@ const Assets: React.FC = () => {
                   <TableBody>
                     {assets.map((asset) => {
                       const { value: currentValue, date: latestDate } = getAssetValueForMonth(asset, selectedMonth);
-                      // Para calcular ROI, usar el valor del mes seleccionado vs valor de adquisición
-                      const acquisition = Number(asset.acquisitionValue ?? 0);
-                      const roi = acquisition > 0 ? ((currentValue - acquisition) / acquisition) * 100 : 0;
-
+                      
                       // Para calcular rentabilidad anual: comparar con el valor del mismo mes hace un año
                       const lastYearRef = subYears(selectedMonth, 1);
                       const lastYearValue = getValueForMonth(asset, lastYearRef);
@@ -449,9 +425,34 @@ const Assets: React.FC = () => {
                       // calcular % anual
                       let annualPct: number | null = null;
                       if (lastYearValue != null && lastYearValue !== 0) {
+                        // Caso 1: Tenemos datos del año pasado, usar rentabilidad directa
                         annualPct = ((currentValue - lastYearValue) / lastYearValue) * 100;
-                      } else {
-                        annualPct = null; // no disponible o división por cero
+                      } else if (Array.isArray(asset.assetValues) && asset.assetValues.length > 0) {
+                        // Caso 2: No hay datos del año pasado, anualizar basándose en los datos disponibles
+                        // Buscar el valor más antiguo
+                        const sortedValues = [...asset.assetValues]
+                          .map(av => ({ ...av, _date: parseISO(av.valuationDate) }))
+                          .filter(av => isValid(av._date))
+                          .sort((a, b) => a._date.getTime() - b._date.getTime());
+                        
+                        if (sortedValues.length > 0 && latestDate) {
+                          const oldestValue = Number(sortedValues[0].currentValue ?? 0);
+                          const oldestDate = sortedValues[0]._date;
+                          
+                          if (oldestValue > 0 && oldestDate) {
+                            // Calcular días transcurridos
+                            const daysDiff = (latestDate.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24);
+                            
+                            if (daysDiff > 0) {
+                              // Calcular retorno total
+                              const totalReturn = (currentValue - oldestValue) / oldestValue;
+                              
+                              // Anualizar: (1 + retorno)^(365/días) - 1
+                              const annualizedReturn = Math.pow(1 + totalReturn, 365 / daysDiff) - 1;
+                              annualPct = annualizedReturn * 100;
+                            }
+                          }
+                        }
                       }
 
                       return (
@@ -464,24 +465,8 @@ const Assets: React.FC = () => {
                           <TableCell className="text-right font-semibold text-primary">
                             {formatCurrency(currentValue)}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <span
-                              className={`inline-flex items-center justify-end gap-1 px-2 py-1 rounded-md font-semibold ${
-                                roi >= 0
-                                  ? 'text-green-700 bg-green-50'
-                                  : 'text-red-700 bg-red-50'
-                              }`}
-                            >
-                              {roi >= 0 ? (
-                                <TrendingUp className="h-4 w-4" />
-                              ) : (
-                                <TrendingDown className="h-4 w-4" />
-                              )}
-                              {roi.toFixed(2)}%
-                            </span>
-                          </TableCell>
 
-                          {/* Nueva columna: Rentabilidad anual */}
+                          {/* Rentabilidad anual */}
                           <TableCell className="text-right">
                             {annualPct == null ? (
                               <span className="text-muted-foreground">—</span>
