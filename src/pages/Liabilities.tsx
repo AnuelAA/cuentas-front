@@ -398,11 +398,13 @@ const Liabilities: React.FC = () => {
         return;
       }
       try {
-        await createLiabilityInterest(user.userId, selectedLiabilityForInterest.liabilityId, {
+        const payload = {
           type: interestForm.type,
-          annualRate: interestForm.annualRate > 0 ? interestForm.annualRate : undefined,
+          annualRate: interestForm.annualRate, // Se envía siempre, incluso si es 0
           startDate: interestForm.startDate,
-        });
+        };
+        console.log('Enviando payload de interés:', payload); // Debug
+        await createLiabilityInterest(user.userId, selectedLiabilityForInterest.liabilityId, payload);
         // Recargar intereses para este pasivo
         const updatedInterests = await getLiabilityInterests(user.userId, selectedLiabilityForInterest.liabilityId);
         setLiabilityInterests(prev => ({
@@ -1143,9 +1145,12 @@ const Liabilities: React.FC = () => {
                   step="0.01"
                   placeholder="2.5"
                   value={String(interestForm.annualRate)} 
-                  onChange={(e) => setInterestForm(f => ({ ...f, annualRate: Number(e.target.value || 0) }))} 
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setInterestForm(f => ({ ...f, annualRate: value ? Number(value) : 0 }));
+                  }} 
                 />
-                <p className="text-xs text-muted-foreground mt-1">Opcional: ejemplo 2.5 para 2.5%</p>
+                <p className="text-xs text-muted-foreground mt-1">Ejemplo: 2.5 para 2.5% anual, o 0 para sin interés</p>
               </div>
               <div>
                 <Label htmlFor="interestStartDate">Fecha de inicio *</Label>
