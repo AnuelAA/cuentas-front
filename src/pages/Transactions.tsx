@@ -991,46 +991,7 @@ const Transactions: React.FC = () => {
                       step="0.01"
                       placeholder="Importe"
                       id={`amount-income-${categoryGroup.categoryId || categoryGroup.categoryName}`}
-                      className="h-9 w-full text-sm font-medium lg:col-span-2"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const amountInput = e.target as HTMLInputElement;
-                          const dateInput = document.getElementById(`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
-                          const assetInput = document.getElementById(`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                          const relatedAssetInput = document.getElementById(`related-asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                          const liabilityInput = document.getElementById(`liability-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                          const amount = parseFloat(amountInput.value);
-                          const date = dateInput?.value || defaultNewDate;
-                          const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
-                          const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
-                          const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
-                          if (!isNaN(amount) && amount > 0) {
-                            const newLocalId = `new-${Date.now()}-${Math.random()}`;
-                            setRows(prev => [
-                              ...prev,
-                              {
-                                localId: newLocalId,
-                                isNew: true,
-                                type: 'income',
-                                categoryName: categoryGroup.categoryName,
-                                categoryId: categoryGroup.categoryId,
-                                transactionDate: date,
-                                description: '',
-                                amount: amount,
-                                assetId,
-                                relatedAssetId,
-                                liabilityId,
-                              } as Row,
-                            ]);
-                            setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
-                            amountInput.value = '';
-                            if (dateInput) dateInput.value = defaultNewDate;
-                            if (assetInput) assetInput.value = '';
-                            if (relatedAssetInput) relatedAssetInput.value = '';
-                            if (liabilityInput) liabilityInput.value = '';
-                          }
-                        }
-                      }}
+                      className="h-9 w-full text-sm font-medium"
                     />
                     <select id={`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
                       <option value="">Activo</option>
@@ -1050,9 +1011,51 @@ const Transactions: React.FC = () => {
                         <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
                       ))}
                     </select>
-                    <span className="text-sm text-muted-foreground">€</span>
+                    <Button
+                      onClick={() => {
+                        const amountInput = document.getElementById(`amount-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                        const dateInput = document.getElementById(`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                        const assetInput = document.getElementById(`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                        const relatedAssetInput = document.getElementById(`related-asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                        const liabilityInput = document.getElementById(`liability-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                        const amount = amountInput?.value ? parseFloat(amountInput.value) : NaN;
+                        const date = dateInput?.value || defaultNewDate;
+                        const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
+                        const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
+                        const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                        if (!isNaN(amount) && amount > 0) {
+                          const newLocalId = `new-${Date.now()}-${Math.random()}`;
+                          setRows(prev => [
+                            ...prev,
+                            {
+                              localId: newLocalId,
+                              isNew: true,
+                              type: 'income',
+                              categoryName: categoryGroup.categoryName,
+                              categoryId: categoryGroup.categoryId,
+                              transactionDate: date,
+                              description: '',
+                              amount: amount,
+                              assetId,
+                              relatedAssetId,
+                              liabilityId,
+                            } as Row,
+                          ]);
+                          setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
+                          if (amountInput) amountInput.value = '';
+                          if (dateInput) dateInput.value = defaultNewDate;
+                          if (assetInput) assetInput.value = '';
+                          if (relatedAssetInput) relatedAssetInput.value = '';
+                          if (liabilityInput) liabilityInput.value = '';
+                        }
+                      }}
+                      className="h-9 w-full sm:w-auto"
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Escribe el importe y presiona Enter para añadir rápidamente</p>
+                  <p className="text-xs text-muted-foreground mt-2">Introduce el importe y haz clic en + para añadir</p>
                 </div>
 
                 {/* Nuevas transacciones añadidas (aún no guardadas) */}
@@ -1284,46 +1287,7 @@ const Transactions: React.FC = () => {
                           step="0.01"
                           placeholder="Importe"
                           id={`amount-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`}
-                          className="h-9 w-full text-sm font-medium lg:col-span-2"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const amountInput = e.target as HTMLInputElement;
-                              const dateInput = document.getElementById(`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
-                              const assetInput = document.getElementById(`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                              const relatedAssetInput = document.getElementById(`related-asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                              const liabilityInput = document.getElementById(`liability-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
-                              const amount = parseFloat(amountInput.value);
-                              const date = dateInput?.value || defaultNewDate;
-                              const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
-                              const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
-                              const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
-                              if (!isNaN(amount) && amount > 0) {
-                                const newLocalId = `new-${Date.now()}-${Math.random()}`;
-                                setRows(prev => [
-                                  ...prev,
-                                  {
-                                    localId: newLocalId,
-                                    isNew: true,
-                                    type: 'expense',
-                                    categoryName: categoryGroup.categoryName,
-                                    categoryId: categoryGroup.categoryId,
-                                    transactionDate: date,
-                                    description: '',
-                                    amount: amount,
-                                    assetId,
-                                    relatedAssetId,
-                                    liabilityId,
-                                  } as Row,
-                                ]);
-                                setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
-                                amountInput.value = '';
-                                if (dateInput) dateInput.value = defaultNewDate;
-                                if (assetInput) assetInput.value = '';
-                                if (relatedAssetInput) relatedAssetInput.value = '';
-                                if (liabilityInput) liabilityInput.value = '';
-                              }
-                            }
-                          }}
+                          className="h-9 w-full text-sm font-medium"
                         />
                         <select id={`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
                           <option value="">Activo</option>
@@ -1343,9 +1307,51 @@ const Transactions: React.FC = () => {
                             <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
                           ))}
                         </select>
-                        <span className="text-sm text-muted-foreground">€</span>
+                        <Button
+                          onClick={() => {
+                            const amountInput = document.getElementById(`amount-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                            const dateInput = document.getElementById(`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
+                            const assetInput = document.getElementById(`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                            const relatedAssetInput = document.getElementById(`related-asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                            const liabilityInput = document.getElementById(`liability-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
+                            const amount = amountInput?.value ? parseFloat(amountInput.value) : NaN;
+                            const date = dateInput?.value || defaultNewDate;
+                            const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
+                            const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
+                            const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                            if (!isNaN(amount) && amount > 0) {
+                              const newLocalId = `new-${Date.now()}-${Math.random()}`;
+                              setRows(prev => [
+                                ...prev,
+                                {
+                                  localId: newLocalId,
+                                  isNew: true,
+                                  type: 'expense',
+                                  categoryName: categoryGroup.categoryName,
+                                  categoryId: categoryGroup.categoryId,
+                                  transactionDate: date,
+                                  description: '',
+                                  amount: amount,
+                                  assetId,
+                                  relatedAssetId,
+                                  liabilityId,
+                                },
+                              ]);
+                              setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
+                              if (amountInput) amountInput.value = '';
+                              if (dateInput) dateInput.value = defaultNewDate;
+                              if (assetInput) assetInput.value = '';
+                              if (relatedAssetInput) relatedAssetInput.value = '';
+                              if (liabilityInput) liabilityInput.value = '';
+                            }
+                          }}
+                          className="h-9 w-full sm:w-auto"
+                          size="sm"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">Escribe el importe y presiona Enter para añadir rápidamente</p>
+                      <p className="text-xs text-muted-foreground mt-2">Introduce el importe y haz clic en + para añadir</p>
                     </div>
 
                     {/* Nuevas transacciones añadidas (aún no guardadas) */}
