@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   
   // Leer la URL del backend desde variable de entorno o usar por defecto
-  const apiUrl = env.VITE_API_URL || 'https://46.101.144.147';
+  const apiUrl = env.VITE_API_URL || 'http://46.101.144.147:8080';
   const proxyTarget = apiUrl.endsWith('/api') ? apiUrl.replace('/api', '') : apiUrl;
   
   return {
