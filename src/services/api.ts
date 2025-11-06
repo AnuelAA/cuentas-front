@@ -22,7 +22,7 @@ import type {
 } from '@/types/api';
 
 // URL base fija al backend; permite override con VITE_API_URL si se define
-const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://46.101.144.147:8080/api') as string;
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'https://46.101.144.147/api') as string;
 
 export const createCategory = async (
   userId: number,
