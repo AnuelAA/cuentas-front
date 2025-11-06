@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
 import { toast } from 'sonner';
@@ -79,6 +79,8 @@ const Transactions: React.FC = () => {
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [quickAdjustValues, setQuickAdjustValues] = useState<Record<string, string[]>>({}); // Lista de valores de ajuste rápido por fila
   const [editingRowIds, setEditingRowIds] = useState<Record<string, boolean>>({});
+  const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState<string>('');
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -639,25 +641,120 @@ const Transactions: React.FC = () => {
     }));
   };
 
+  // Función para actualizar el nombre de categoría de todas las transacciones de un grupo
+  const updateCategoryForGroup = async (oldCategoryName: string, oldCategoryId: number | undefined, newCategoryName: string, type: 'income' | 'expense') => {
+    if (!user?.userId) return;
+    
+    const trimmedNewName = newCategoryName.trim();
+    if (!trimmedNewName) {
+      toast.error('El nombre de la categoría no puede estar vacío');
+      return;
+    }
+
+    try {
+      // Encontrar todas las transacciones de esta categoría
+      const transactionsToUpdate = rows.filter(r => {
+        const rowCategoryName = r.categoryName || categories.find(c => c.categoryId === r.categoryId)?.name || '';
+        return rowCategoryName.toLowerCase().trim() === oldCategoryName.toLowerCase().trim() && r.type === type && !r.isNew;
+      });
+
+      if (transactionsToUpdate.length === 0) {
+        toast.error('No hay transacciones guardadas para actualizar');
+        return;
+      }
+
+      // Obtener o crear la nueva categoría
+      let newCategoryId = oldCategoryId;
+      const existingCategory = categories.find(c => c.name.toLowerCase().trim() === trimmedNewName.toLowerCase() && c.type === type);
+      
+      if (existingCategory) {
+        newCategoryId = existingCategory.categoryId;
+      } else {
+        // Crear nueva categoría
+        const newCat = await createCategory(user.userId, { name: trimmedNewName, type });
+        newCategoryId = newCat.categoryId;
+        setCategories(prev => [...prev, newCat]);
+      }
+
+      // Actualizar todas las transacciones
+      let successCount = 0;
+      for (const transaction of transactionsToUpdate) {
+        if (transaction.transactionId) {
+          try {
+            const payload: CreateTransactionRequest = {
+              userId: user.userId,
+              categoryId: newCategoryId,
+              assetId: transaction.assetId ?? null,
+              relatedAssetId: transaction.relatedAssetId ?? null,
+              liabilityId: transaction.liabilityId ?? null,
+              type: transaction.type ?? null,
+              amount: Math.abs(transaction.amount),
+              transactionDate: transaction.transactionDate,
+              description: transaction.description ?? null,
+            };
+            await updateTransaction(user.userId, transaction.transactionId, payload);
+            successCount++;
+          } catch (err) {
+            console.error('Error actualizando transacción:', err);
+          }
+        }
+      }
+
+      toast.success(`${successCount} transacciones actualizadas correctamente`);
+      setEditingCategoryKey(null);
+      setEditingCategoryName('');
+      fetchTransactions();
+    } catch (error) {
+      console.error('Error actualizando categoría:', error);
+      toast.error('Error al actualizar la categoría');
+    }
+  };
+
 
   const rowClass = (r: Row, idx: number) => {
-    const baseClass = 'transition-all duration-200 hover:bg-slate-50/50';
-    const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30';
+    const baseClass = 'transition-all duration-200 hover:bg-accent/30';
+    const stripe = idx % 2 === 0 ? 'bg-white' : 'bg-accent/10';
     const typeClass =
       r.type === 'income'
-        ? 'border-l-4 border-green-500 hover:border-green-600 hover:shadow-sm'
+        ? 'border-l-4 border-success hover:border-success-light hover:shadow-sm'
         : r.type === 'expense'
-        ? 'border-l-4 border-red-500 hover:border-red-600 hover:shadow-sm'
+        ? 'border-l-4 border-destructive hover:border-destructive/80 hover:shadow-sm'
         : '';
-    const editedClass = r.isEdited && !r.isNew ? 'ring-2 ring-primary/20 bg-primary/5' : '';
-    const newClass = r.isNew ? 'ring-2 ring-success/30 bg-success/10' : '';
+    const editedClass = r.isEdited && !r.isNew ? 'ring-2 ring-primary/30 bg-primary/5' : '';
+    const newClass = r.isNew ? 'ring-2 ring-success/40 bg-success/5' : '';
     return `${baseClass} ${stripe} ${typeClass} ${editedClass} ${newClass}`;
   };
 
   const toggleEdit = (localId: string, on?: boolean) => {
     setEditingRowIds(prev => ({ ...prev, [localId]: on === undefined ? !prev[localId] : on }));
-    // marcar como editado para asegurar envío al guardar
-    updateRow(localId, {});
+  };
+
+  // Función para guardar una transacción individual
+  const saveIndividualTransaction = async (localId: string) => {
+    if (!user?.userId) return;
+    
+    const row = rows.find(r => r.localId === localId);
+    if (!row || row.isNew) return;
+    
+    if (!row.transactionId) {
+      toast.error('No se puede guardar: ID de transacción no válido');
+      return;
+    }
+
+    try {
+      const payload = await buildPayloadFromRow(row);
+      await updateTransaction(user.userId, row.transactionId, payload);
+      toast.success('Transacción actualizada correctamente');
+      setEditingRowIds(prev => {
+        const next = { ...prev };
+        delete next[localId];
+        return next;
+      });
+      fetchTransactions();
+    } catch (error) {
+      console.error('Error actualizando transacción:', error);
+      toast.error('Error al actualizar la transacción');
+    }
   };
 
   const safeFormatDate = (iso: string) => {
@@ -704,55 +801,48 @@ const Transactions: React.FC = () => {
                   />
                 </div>
               </div>
-              <Button 
-                onClick={handleSaveAll} 
-                className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/20"
-                size="lg"
-              >
-                <Save className="mr-2 h-4 w-4" /> Guardar todos
-              </Button>
             </div>
           </div>
 
           {/* Estadísticas rápidas */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="border-green-200 bg-gradient-to-br from-green-50 to-green-50/50">
+            <Card className="border-success/30 bg-gradient-to-br from-success/5 to-success/10">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-green-700/80 mb-1">Total Ingresos</p>
-                    <p className="text-2xl font-bold text-green-700">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalIncome)}</p>
+                    <p className="text-sm font-medium text-success mb-1">Total Ingresos</p>
+                    <p className="text-2xl font-bold text-success">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalIncome)}</p>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-green-500/20 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-green-600" />
+                  <div className="h-12 w-12 rounded-full bg-success/20 flex items-center justify-center">
+                    <TrendingUp className="h-6 w-6 text-success" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-red-200 bg-gradient-to-br from-red-50 to-red-50/50">
+            <Card className="border-destructive/30 bg-gradient-to-br from-destructive/5 to-destructive/10">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-red-700/80 mb-1">Total Gastos</p>
-                    <p className="text-2xl font-bold text-red-700">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalExpenses)}</p>
+                    <p className="text-sm font-medium text-destructive mb-1">Total Gastos</p>
+                    <p className="text-2xl font-bold text-destructive">{new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(totalExpenses)}</p>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                    <TrendingDown className="h-6 w-6 text-red-600" />
+                  <div className="h-12 w-12 rounded-full bg-destructive/20 flex items-center justify-center">
+                    <TrendingDown className="h-6 w-6 text-destructive" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card className={`border-2 ${netBalance >= 0 ? 'border-green-200 bg-gradient-to-br from-green-50 to-green-50/50' : 'border-red-200 bg-gradient-to-br from-red-50 to-red-50/50'}`}>
+            <Card className={`border-2 ${netBalance >= 0 ? 'border-success/30 bg-gradient-to-br from-success/5 to-success/10' : 'border-destructive/30 bg-gradient-to-br from-destructive/5 to-destructive/10'}`}>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-1">Balance Neto</p>
-                    <p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    <p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-success' : 'text-destructive'}`}>
                       {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(netBalance)}
                     </p>
                   </div>
-                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${netBalance >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                    <DollarSign className={`h-6 w-6 ${netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${netBalance >= 0 ? 'bg-success/20' : 'bg-destructive/20'}`}>
+                    <DollarSign className={`h-6 w-6 ${netBalance >= 0 ? 'text-success' : 'text-destructive'}`} />
                   </div>
                 </div>
               </CardContent>
@@ -761,7 +851,7 @@ const Transactions: React.FC = () => {
         </div>
 
         {/* Añadir transacción rápida (cualquier categoría, incluso nueva) */}
-        <Card className="border-slate-200 shadow-md">
+        <Card className="border-accent shadow-md">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Añadir transacción rápida</CardTitle>
           </CardHeader>
@@ -848,16 +938,16 @@ const Transactions: React.FC = () => {
         </Card>
 
         {/* Sección de Ingresos agrupados por categoría */}
-        <Card className="border-green-100 shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-green-50 to-green-50/50 border-b border-green-100">
+        <Card className="border-success/30 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-success/10 to-success/5 border-b border-success/20">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-green-500 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-success flex items-center justify-center">
                   <TrendingUp className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-green-900">Ingresos</CardTitle>
-                  <p className="text-sm text-green-700/70 mt-0.5">{incomeRows.length} {incomeRows.length === 1 ? 'transacción' : 'transacciones'}</p>
+                  <CardTitle className="text-xl text-success">Ingresos</CardTitle>
+                  <p className="text-sm text-success/80 mt-0.5">{incomeRows.length} {incomeRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
             </div>
@@ -866,29 +956,86 @@ const Transactions: React.FC = () => {
             {incomeByCategory.length === 0 ? (
               <p className="text-muted-foreground text-sm py-4">No hay ingresos en el rango de fechas seleccionado</p>
             ) : (
-              incomeByCategory.map((categoryGroup) => (
+              incomeByCategory.map((categoryGroup) => {
+                const categoryKey = `income-${categoryGroup.categoryId || 'none'}-${categoryGroup.categoryName.toLowerCase()}`;
+                const isEditingThis = editingCategoryKey === categoryKey;
+                
+                return (
                 <Card key={categoryGroup.categoryId || categoryGroup.categoryName} className="shadow-sm border">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
-                        <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-sm">
-                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
+                      {isEditingThis ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            value={editingCategoryName}
+                            onChange={(e) => setEditingCategoryName(e.target.value)}
+                            className="h-8 text-base font-semibold max-w-[300px]"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                updateCategoryForGroup(categoryGroup.categoryName, categoryGroup.categoryId, editingCategoryName, 'income');
+                              } else if (e.key === 'Escape') {
+                                setEditingCategoryKey(null);
+                                setEditingCategoryName('');
+                              }
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-success hover:bg-success/10"
+                            onClick={() => updateCategoryForGroup(categoryGroup.categoryName, categoryGroup.categoryId, editingCategoryName, 'income')}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              setEditingCategoryKey(null);
+                              setEditingCategoryName('');
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 hover:bg-accent/40"
+                              onClick={() => {
+                                setEditingCategoryKey(categoryKey);
+                                setEditingCategoryName(categoryGroup.categoryName);
+                              }}
+                            >
+                              <Edit2 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-sm">
+                              {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
                             </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
-                        </Badge>
-                      </div>
+                            <Badge variant="secondary" className="text-xs">
+                              {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
+                            </Badge>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                 {/* Histórico de transacciones de esta categoría */}
                 {categoryGroup.rows.filter(r => !r.isNew).length > 0 && (
-                  <div className="border rounded-lg p-3 bg-slate-50/50">
+                  <div className="border rounded-lg p-3 bg-accent/5">
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">Transacciones registradas</h4>
                     <div className="space-y-2">
                 {categoryGroup.rows.filter(r => !r.isNew).map((r) => (
-                  <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200 hover:bg-slate-50 transition-colors">
+                  <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-accent hover:bg-accent/10 transition-colors">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                       {editingRowIds[r.localId] ? (
                         <>
@@ -941,7 +1088,7 @@ const Transactions: React.FC = () => {
                       ) : (
                         <>
                           <span className="text-xs text-muted-foreground min-w-[80px]">{safeFormatDate(r.transactionDate)}</span>
-                          <span className={`font-semibold ${r.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                          <span className={`font-semibold ${r.type === 'income' ? 'text-success' : 'text-destructive'}`}>
                             {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
                           </span>
                           {r.description && (
@@ -951,25 +1098,46 @@ const Transactions: React.FC = () => {
                           )}
                         </div>
                     <div className="flex items-center gap-1">
-                      {r.isEdited && (
-                        <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">Editado</Badge>
+                      {editingRowIds[r.localId] ? (
+                        <>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => saveIndividualTransaction(r.localId)}
+                            className="h-7 px-2 bg-success hover:bg-success/90 text-white"
+                          >
+                            <Save className="h-3 w-3 mr-1" />
+                            Guardar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEdit(r.localId)}
+                            className="h-7 px-2 hover:bg-accent"
+                          >
+                            Cancelar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleEdit(r.localId)}
+                            className="h-7 px-2 hover:bg-primary/10 hover:text-primary"
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeRow(r.localId)}
+                            className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleEdit(r.localId)}
-                        className="h-7 px-2 hover:bg-blue-50 hover:text-blue-600"
-                      >
-                        {editingRowIds[r.localId] ? 'Cerrar' : 'Editar'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeRow(r.localId)}
-                        className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
                     </div>
                   </div>
                 ))}
@@ -978,7 +1146,7 @@ const Transactions: React.FC = () => {
                 )}
 
                 {/* Formulario compacto para añadir nueva transacción */}
-                <div className="border-2 border-dashed rounded-lg p-3 bg-slate-50/30">
+                <div className="border-2 border-dashed border-accent rounded-lg p-3 bg-accent/5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
                     <Input
                       type="date"
@@ -1012,7 +1180,8 @@ const Transactions: React.FC = () => {
                       ))}
                     </select>
                     <Button
-                      onClick={() => {
+                      onClick={async () => {
+                        if (!user?.userId) return;
                         const amountInput = document.getElementById(`amount-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
                         const dateInput = document.getElementById(`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
                         const assetInput = document.getElementById(`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
@@ -1023,12 +1192,12 @@ const Transactions: React.FC = () => {
                         const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
                         const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
                         const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                        
                         if (!isNaN(amount) && amount > 0) {
-                          const newLocalId = `new-${Date.now()}-${Math.random()}`;
-                          setRows(prev => [
-                            ...prev,
-                            {
-                              localId: newLocalId,
+                          try {
+                            // Construir el payload para guardar directamente
+                            const payload = await buildPayloadFromRow({
+                              localId: 'temp',
                               isNew: true,
                               type: 'income',
                               categoryName: categoryGroup.categoryName,
@@ -1039,14 +1208,25 @@ const Transactions: React.FC = () => {
                               assetId,
                               relatedAssetId,
                               liabilityId,
-                            } as Row,
-                          ]);
-                          setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
-                          if (amountInput) amountInput.value = '';
-                          if (dateInput) dateInput.value = defaultNewDate;
-                          if (assetInput) assetInput.value = '';
-                          if (relatedAssetInput) relatedAssetInput.value = '';
-                          if (liabilityInput) liabilityInput.value = '';
+                            });
+                            
+                            // Guardar directamente
+                            await createTransaction(user.userId, payload);
+                            toast.success('Transacción guardada correctamente');
+                            
+                            // Limpiar campos
+                            if (amountInput) amountInput.value = '';
+                            if (dateInput) dateInput.value = defaultNewDate;
+                            if (assetInput) assetInput.value = '';
+                            if (relatedAssetInput) relatedAssetInput.value = '';
+                            if (liabilityInput) liabilityInput.value = '';
+                            
+                            // Recargar transacciones
+                            fetchTransactions();
+                          } catch (error) {
+                            console.error('Error guardando transacción:', error);
+                            toast.error('Error al guardar la transacción');
+                          }
                         }
                       }}
                       className="h-9 w-full sm:w-auto"
@@ -1060,11 +1240,11 @@ const Transactions: React.FC = () => {
 
                 {/* Nuevas transacciones añadidas (aún no guardadas) */}
                 {categoryGroup.rows.filter(r => r.isNew).length > 0 && (
-                  <div className="border rounded-lg p-3 bg-yellow-50/50 border-yellow-200">
-                    <h4 className="text-sm font-medium text-yellow-900 mb-2">Nuevas (pendientes de guardar)</h4>
+                  <div className="border rounded-lg p-3 bg-warning/5 border-warning/30">
+                    <h4 className="text-sm font-medium text-warning mb-2">Nuevas (pendientes de guardar)</h4>
                     <div className="space-y-2">
                       {categoryGroup.rows.filter(r => r.isNew).map((r) => (
-                        <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-300 hover:bg-yellow-50 transition-colors">
+                        <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-warning/30 hover:bg-warning/5 transition-colors">
                           <div className="flex items-center gap-3 flex-1">
                             <Input
                               type="date"
@@ -1117,7 +1297,7 @@ const Transactions: React.FC = () => {
                               className="h-8 text-sm font-medium flex-1 max-w-[120px]"
                             />
                             <span className="text-xs text-muted-foreground">€</span>
-                            <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
+                            <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-xs">
                               Nuevo
                             </Badge>
                           </div>
@@ -1125,7 +1305,7 @@ const Transactions: React.FC = () => {
                           variant="ghost" 
                           size="sm" 
                           onClick={() => removeRow(r.localId)}
-                            className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                            className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
                         >
                             <Trash2 className="h-3 w-3" />
                         </Button>
@@ -1136,22 +1316,23 @@ const Transactions: React.FC = () => {
                 )}
                 </CardContent>
               </Card>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
 
         {/* Sección de Gastos agrupados por categoría */}
-        <Card className="border-red-100 shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-red-50 to-red-50/50 border-b border-red-100">
+        <Card className="border-destructive/30 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-destructive/10 to-destructive/5 border-b border-destructive/20">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-red-500 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-destructive flex items-center justify-center">
                   <TrendingDown className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-red-900">Gastos</CardTitle>
-                  <p className="text-sm text-red-700/70 mt-0.5">{expenseRows.length} {expenseRows.length === 1 ? 'transacción' : 'transacciones'}</p>
+                  <CardTitle className="text-xl text-destructive">Gastos</CardTitle>
+                  <p className="text-sm text-destructive/80 mt-0.5">{expenseRows.length} {expenseRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
             </div>
@@ -1160,29 +1341,86 @@ const Transactions: React.FC = () => {
             {expenseByCategory.length === 0 ? (
               <p className="text-muted-foreground text-sm py-4">No hay gastos en el rango de fechas seleccionado</p>
             ) : (
-              expenseByCategory.map((categoryGroup) => (
+              expenseByCategory.map((categoryGroup) => {
+                const categoryKey = `expense-${categoryGroup.categoryId || 'none'}-${categoryGroup.categoryName.toLowerCase()}`;
+                const isEditingThis = editingCategoryKey === categoryKey;
+                
+                return (
                 <Card key={categoryGroup.categoryId || categoryGroup.categoryName} className="shadow-sm border">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
-                        <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-sm">
-                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
+                      {isEditingThis ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            value={editingCategoryName}
+                            onChange={(e) => setEditingCategoryName(e.target.value)}
+                            className="h-8 text-base font-semibold max-w-[300px]"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                updateCategoryForGroup(categoryGroup.categoryName, categoryGroup.categoryId, editingCategoryName, 'expense');
+                              } else if (e.key === 'Escape') {
+                                setEditingCategoryKey(null);
+                                setEditingCategoryName('');
+                              }
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-success hover:bg-success/10"
+                            onClick={() => updateCategoryForGroup(categoryGroup.categoryName, categoryGroup.categoryId, editingCategoryName, 'expense')}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              setEditingCategoryKey(null);
+                              setEditingCategoryName('');
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 hover:bg-accent/40"
+                              onClick={() => {
+                                setEditingCategoryKey(categoryKey);
+                                setEditingCategoryName(categoryGroup.categoryName);
+                              }}
+                            >
+                              <Edit2 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-sm">
+                              {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(categoryGroup.total)}
                             </Badge>
-                        <Badge variant="secondary" className="text-xs">
-                          {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
-                        </Badge>
-                      </div>
+                            <Badge variant="secondary" className="text-xs">
+                              {categoryGroup.rows.length} {categoryGroup.rows.length === 1 ? 'transacción' : 'transacciones'}
+                            </Badge>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {/* Histórico de transacciones de esta categoría */}
                     {categoryGroup.rows.filter(r => !r.isNew).length > 0 && (
-                      <div className="border rounded-lg p-3 bg-slate-50/50">
+                      <div className="border rounded-lg p-3 bg-accent/5">
                         <h4 className="text-sm font-medium text-muted-foreground mb-2">Transacciones registradas</h4>
                         <div className="space-y-2">
                           {categoryGroup.rows.filter(r => !r.isNew).map((r) => (
-                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200 hover:bg-slate-50 transition-colors">
+                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-accent hover:bg-accent/10 transition-colors">
                               <div className="flex items-center gap-3 flex-1">
                                 {editingRowIds[r.localId] ? (
                                   <>
@@ -1235,7 +1473,7 @@ const Transactions: React.FC = () => {
                                 ) : (
                                   <>
                                     <span className="text-xs text-muted-foreground min-w-[80px]">{safeFormatDate(r.transactionDate)}</span>
-                                    <span className={`font-semibold ${r.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                                    <span className={`font-semibold ${r.type === 'income' ? 'text-success' : 'text-destructive'}`}>
                                       {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
                                     </span>
                                     {r.description && (
@@ -1245,27 +1483,46 @@ const Transactions: React.FC = () => {
                                 )}
                               </div>
                               <div className="flex items-center gap-1">
-                                {r.isEdited && (
-                                  <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
-                                    Editado
-                                  </Badge>
+                                {editingRowIds[r.localId] ? (
+                                  <>
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => saveIndividualTransaction(r.localId)}
+                                      className="h-7 px-2 bg-success hover:bg-success/90 text-white"
+                                    >
+                                      <Save className="h-3 w-3 mr-1" />
+                                      Guardar
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => toggleEdit(r.localId)}
+                                      className="h-7 px-2 hover:bg-accent"
+                                    >
+                                      Cancelar
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => toggleEdit(r.localId)}
+                                      className="h-7 px-2 hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeRow(r.localId)}
+                                      className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </>
                                 )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleEdit(r.localId)}
-                                  className="h-7 px-2 hover:bg-blue-50 hover:text-blue-600"
-                                >
-                                  {editingRowIds[r.localId] ? 'Cerrar' : 'Editar'}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeRow(r.localId)}
-                                  className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
                               </div>
                             </div>
                           ))}
@@ -1274,7 +1531,7 @@ const Transactions: React.FC = () => {
                     )}
 
                     {/* Formulario compacto para añadir nueva transacción */}
-                    <div className="border-2 border-dashed rounded-lg p-3 bg-slate-50/30">
+                    <div className="border-2 border-dashed border-accent rounded-lg p-3 bg-accent/5">
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 items-start">
                         <Input
                           type="date"
@@ -1308,7 +1565,8 @@ const Transactions: React.FC = () => {
                           ))}
                         </select>
                         <Button
-                          onClick={() => {
+                          onClick={async () => {
+                            if (!user?.userId) return;
                             const amountInput = document.getElementById(`amount-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
                             const dateInput = document.getElementById(`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLInputElement;
                             const assetInput = document.getElementById(`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
@@ -1319,12 +1577,12 @@ const Transactions: React.FC = () => {
                             const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
                             const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
                             const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
+                            
                             if (!isNaN(amount) && amount > 0) {
-                              const newLocalId = `new-${Date.now()}-${Math.random()}`;
-                              setRows(prev => [
-                                ...prev,
-                                {
-                                  localId: newLocalId,
+                              try {
+                                // Construir el payload para guardar directamente
+                                const payload = await buildPayloadFromRow({
+                                  localId: 'temp',
                                   isNew: true,
                                   type: 'expense',
                                   categoryName: categoryGroup.categoryName,
@@ -1335,14 +1593,25 @@ const Transactions: React.FC = () => {
                                   assetId,
                                   relatedAssetId,
                                   liabilityId,
-                                },
-                              ]);
-                              setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
-                              if (amountInput) amountInput.value = '';
-                              if (dateInput) dateInput.value = defaultNewDate;
-                              if (assetInput) assetInput.value = '';
-                              if (relatedAssetInput) relatedAssetInput.value = '';
-                              if (liabilityInput) liabilityInput.value = '';
+                                });
+                                
+                                // Guardar directamente
+                                await createTransaction(user.userId, payload);
+                                toast.success('Transacción guardada correctamente');
+                                
+                                // Limpiar campos
+                                if (amountInput) amountInput.value = '';
+                                if (dateInput) dateInput.value = defaultNewDate;
+                                if (assetInput) assetInput.value = '';
+                                if (relatedAssetInput) relatedAssetInput.value = '';
+                                if (liabilityInput) liabilityInput.value = '';
+                                
+                                // Recargar transacciones
+                                fetchTransactions();
+                              } catch (error) {
+                                console.error('Error guardando transacción:', error);
+                                toast.error('Error al guardar la transacción');
+                              }
                             }
                           }}
                           className="h-9 w-full sm:w-auto"
@@ -1360,7 +1629,7 @@ const Transactions: React.FC = () => {
                         <h4 className="text-sm font-medium text-yellow-900 mb-2">Nuevas (pendientes de guardar)</h4>
                         <div className="space-y-2">
                           {categoryGroup.rows.filter(r => r.isNew).map((r) => (
-                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-300 hover:bg-yellow-50 transition-colors">
+                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-warning/30 hover:bg-warning/5 transition-colors">
                               <div className="flex items-center gap-3 flex-1">
                                 <Input
                                   type="date"
@@ -1421,7 +1690,7 @@ const Transactions: React.FC = () => {
                           variant="ghost" 
                           size="sm" 
                           onClick={() => removeRow(r.localId)}
-                                className="h-7 w-7 p-0 hover:bg-red-50 hover:text-red-600"
+                                className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
                         >
                                 <Trash2 className="h-3 w-3" />
                         </Button>
@@ -1432,7 +1701,8 @@ const Transactions: React.FC = () => {
                     )}
                   </CardContent>
                 </Card>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
