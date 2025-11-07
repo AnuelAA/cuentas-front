@@ -16,10 +16,12 @@ export default defineConfig(({ mode }) => {
   server: {
     host: "::",
     port: 8080,
-    // Asegurar que todas las rutas se sirvan a index.html para SPA routing
-    // Esto es necesario para que funcionen las rutas como /assets, /dashboard, etc.
-    // cuando se refresca la página o se accede directamente
     strictPort: false,
+    // Configuración para SPA routing - redirige todas las rutas a index.html
+    // Esto permite que funcione F5 en cualquier ruta como /assets, /dashboard, etc.
+    fs: {
+      strict: false,
+    },
     proxy: {
       '/api': {
         target: proxyTarget,
@@ -27,6 +29,11 @@ export default defineConfig(({ mode }) => {
         secure: true,
       }
     }
+  },
+  preview: {
+    port: 8080,
+    strictPort: false,
+    host: "::",
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
@@ -36,10 +43,14 @@ export default defineConfig(({ mode }) => {
   },
   // Configuración para el build de producción
   build: {
+    outDir: 'dist',
     rollupOptions: {
       output: {
         // Asegurar que los assets tengan nombres predecibles
-        assetFileNames: 'assets/[name].[ext]',
+        // Cambiamos el patrón para evitar conflictos con la ruta /assets de la aplicación
+        assetFileNames: 'static/[name]-[hash].[ext]',
+        chunkFileNames: 'static/[name]-[hash].js',
+        entryFileNames: 'static/[name]-[hash].js',
       }
     }
   }
