@@ -889,7 +889,8 @@ const Transactions: React.FC = () => {
                 {liabilities.map(l => (<option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>))}
               </select>
               <Button
-                onClick={() => {
+                onClick={async () => {
+                  if (!user?.userId) return;
                   const catEl = document.getElementById('quick-category') as HTMLInputElement | null;
                   const typeEl = document.getElementById('quick-type') as HTMLInputElement | null;
                   const dateEl = document.getElementById('quick-date') as HTMLInputElement | null;
@@ -904,12 +905,16 @@ const Transactions: React.FC = () => {
                   const assetId = assetEl?.value ? parseInt(assetEl.value) : undefined;
                   const relatedAssetId = relAssetEl?.value ? parseInt(relAssetEl.value) : undefined;
                   const liabilityId = liabEl?.value ? parseInt(liabEl.value) : undefined;
-                  if (!categoryName || !type || isNaN(amount) || amount <= 0) return;
-                  const newLocalId = `new-${Date.now()}-${Math.random()}`;
-                  setRows(prev => ([
-                    ...prev,
-                    {
-                      localId: newLocalId,
+                  
+                  if (!categoryName || !type || isNaN(amount) || amount <= 0) {
+                    toast.error('Por favor completa todos los campos obligatorios');
+                    return;
+                  }
+                  
+                  try {
+                    // Construir el payload para guardar directamente
+                    const payload = await buildPayloadFromRow({
+                      localId: 'temp',
                       isNew: true,
                       type,
                       categoryName,
@@ -919,21 +924,33 @@ const Transactions: React.FC = () => {
                       assetId,
                       relatedAssetId,
                       liabilityId,
-                    } as Row,
-                  ]));
-                  setQuickAdjustValues(prev => ({ ...prev, [newLocalId]: [''] }));
-                  if (catEl) catEl.value = '';
-                  if (amountEl) amountEl.value = '';
-                  if (assetEl) assetEl.value = '';
-                  if (relAssetEl) relAssetEl.value = '';
-                  if (liabEl) liabEl.value = '';
+                    });
+                    
+                    // Guardar directamente
+                    await createTransaction(user.userId, payload);
+                    toast.success('Transacción guardada correctamente');
+                    
+                    // Limpiar campos
+                    if (catEl) catEl.value = '';
+                    if (amountEl) amountEl.value = '';
+                    if (assetEl) assetEl.value = '';
+                    if (relAssetEl) relAssetEl.value = '';
+                    if (liabEl) liabEl.value = '';
+                    
+                    // Recargar transacciones
+                    fetchTransactions();
+                  } catch (error) {
+                    console.error('Error guardando transacción:', error);
+                    toast.error('Error al guardar la transacción');
+                  }
                 }}
-                className="h-9"
+                className="h-9 bg-success hover:bg-success/90 text-white"
               >
-                Añadir
+                <Save className="h-4 w-4 mr-1" />
+                Guardar
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Puedes escribir una categoría nueva. Se creará al guardar.</p>
+            <p className="text-xs text-muted-foreground mt-2">Puedes escribir una categoría nueva. Se guardará inmediatamente.</p>
           </CardContent>
         </Card>
 
@@ -1053,13 +1070,6 @@ const Transactions: React.FC = () => {
                             onChange={(e) => handleAmountChange(r.localId, e.target.value)}
                             className="h-8 text-sm font-medium max-w-[120px]"
                           />
-                          <Input
-                            type="text"
-                            placeholder="Descripción"
-                            value={r.description}
-                            onChange={(e) => updateRow(r.localId, { description: e.target.value })}
-                            className="h-8 text-xs flex-1"
-                          />
                           <select
                             value={r.assetId ? String(r.assetId) : ''}
                             onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
@@ -1091,11 +1101,8 @@ const Transactions: React.FC = () => {
                           <span className={`font-semibold ${r.type === 'income' ? 'text-success' : 'text-destructive'}`}>
                             {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
                           </span>
-                          {r.description && (
-                            <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">{r.description}</span>
-                          )}
                         </>
-                          )}
+                      )}
                         </div>
                     <div className="flex items-center gap-1">
                       {editingRowIds[r.localId] ? (
@@ -1229,91 +1236,16 @@ const Transactions: React.FC = () => {
                           }
                         }
                       }}
-                      className="h-9 w-full sm:w-auto"
+                      className="h-9 w-full sm:w-auto bg-success hover:bg-success/90 text-white"
                       size="sm"
                     >
-                      <Plus className="h-4 w-4" />
+                      <Save className="h-4 w-4 mr-1" />
+                      Guardar
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Introduce el importe y haz clic en + para añadir</p>
+                  <p className="text-xs text-muted-foreground mt-2">Introduce el importe y haz clic en Guardar</p>
                 </div>
 
-                {/* Nuevas transacciones añadidas (aún no guardadas) */}
-                {categoryGroup.rows.filter(r => r.isNew).length > 0 && (
-                  <div className="border rounded-lg p-3 bg-warning/5 border-warning/30">
-                    <h4 className="text-sm font-medium text-warning mb-2">Nuevas (pendientes de guardar)</h4>
-                    <div className="space-y-2">
-                      {categoryGroup.rows.filter(r => r.isNew).map((r) => (
-                        <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-warning/30 hover:bg-warning/5 transition-colors">
-                          <div className="flex items-center gap-3 flex-1">
-                            <Input
-                              type="date"
-                              value={r.transactionDate}
-                              onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
-                              className="h-8 text-xs"
-                              style={{ width: 120 }}
-                            />
-                            <select
-                              value={r.assetId ? String(r.assetId) : ''}
-                              onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
-                              className="h-8 text-xs border rounded px-2 min-w-[140px]"
-                            >
-                              <option value="">Activo</option>
-                              {assets.map(a => (
-                                <option key={a.assetId} value={a.assetId}>{a.name}</option>
-                              ))}
-                            </select>
-                            <select
-                              value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
-                              onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
-                              className="h-8 text-xs border rounded px-2 min-w-[160px]"
-                            >
-                              <option value="">Activo relacionado (opcional)</option>
-                              {assets.map(a => (
-                                <option key={a.assetId} value={a.assetId}>{a.name}</option>
-                              ))}
-                            </select>
-                            <select
-                              value={r.liabilityId ? String(r.liabilityId) : ''}
-                              onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
-                              className="h-8 text-xs border rounded px-2 min-w-[140px]"
-                            >
-                              <option value="">Pasivo (opcional)</option>
-                              {liabilities.map(l => (
-                                <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
-                              ))}
-                            </select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={getAmountDisplayValue(r)}
-                              onChange={(e) => handleAmountChange(r.localId, e.target.value)}
-                              onFocus={(e) => {
-                                if (r.amount === 0) {
-                                  e.target.select();
-                                }
-                              }}
-                              placeholder="0"
-                              className="h-8 text-sm font-medium flex-1 max-w-[120px]"
-                            />
-                            <span className="text-xs text-muted-foreground">€</span>
-                            <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-xs">
-                              Nuevo
-                            </Badge>
-                          </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => removeRow(r.localId)}
-                            className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
-                        >
-                            <Trash2 className="h-3 w-3" />
-                        </Button>
-                        </div>
-                  ))}
-            </div>
-                  </div>
-                )}
                 </CardContent>
               </Card>
                 );
@@ -1438,13 +1370,6 @@ const Transactions: React.FC = () => {
                                       onChange={(e) => handleAmountChange(r.localId, e.target.value)}
                                       className="h-8 text-sm font-medium max-w-[120px]"
                                     />
-                                    <Input
-                                      type="text"
-                                      placeholder="Descripción"
-                                      value={r.description}
-                                      onChange={(e) => updateRow(r.localId, { description: e.target.value })}
-                                      className="h-8 text-xs flex-1"
-                                    />
                                     <select
                                       value={r.assetId ? String(r.assetId) : ''}
                                       onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
@@ -1476,9 +1401,6 @@ const Transactions: React.FC = () => {
                                     <span className={`font-semibold ${r.type === 'income' ? 'text-success' : 'text-destructive'}`}>
                                       {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(r.amount || 0)}
                                     </span>
-                                    {r.description && (
-                                      <span className="text-sm text-muted-foreground truncate flex-1">{r.description}</span>
-                                    )}
                                   </>
                                 )}
                               </div>
@@ -1623,82 +1545,6 @@ const Transactions: React.FC = () => {
                       <p className="text-xs text-muted-foreground mt-2">Introduce el importe y haz clic en + para añadir</p>
                     </div>
 
-                    {/* Nuevas transacciones añadidas (aún no guardadas) */}
-                    {categoryGroup.rows.filter(r => r.isNew).length > 0 && (
-                      <div className="border rounded-lg p-3 bg-yellow-50/50 border-yellow-200">
-                        <h4 className="text-sm font-medium text-yellow-900 mb-2">Nuevas (pendientes de guardar)</h4>
-                        <div className="space-y-2">
-                          {categoryGroup.rows.filter(r => r.isNew).map((r) => (
-                            <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-warning/30 hover:bg-warning/5 transition-colors">
-                              <div className="flex items-center gap-3 flex-1">
-                                <Input
-                                  type="date"
-                                  value={r.transactionDate}
-                                  onChange={(e) => updateRow(r.localId, { transactionDate: e.target.value })}
-                                  className="h-8 text-xs"
-                                  style={{ width: 120 }}
-                                />
-                                <select
-                                  value={r.assetId ? String(r.assetId) : ''}
-                                  onChange={(e) => updateRow(r.localId, { assetId: e.target.value ? parseInt(e.target.value) : undefined })}
-                                  className="h-8 text-xs border rounded px-2 min-w-[140px]"
-                                >
-                                  <option value="">Activo</option>
-                                  {assets.map(a => (
-                                    <option key={a.assetId} value={a.assetId}>{a.name}</option>
-                                  ))}
-                                </select>
-                                <select
-                                  value={r.relatedAssetId ? String(r.relatedAssetId) : ''}
-                                  onChange={(e) => updateRow(r.localId, { relatedAssetId: e.target.value ? parseInt(e.target.value) : undefined })}
-                                  className="h-8 text-xs border rounded px-2 min-w-[160px]"
-                                >
-                                  <option value="">Activo relacionado (opcional)</option>
-                                  {assets.map(a => (
-                                    <option key={a.assetId} value={a.assetId}>{a.name}</option>
-                                  ))}
-                                </select>
-                                <select
-                                  value={r.liabilityId ? String(r.liabilityId) : ''}
-                                  onChange={(e) => updateRow(r.localId, { liabilityId: e.target.value ? parseInt(e.target.value) : undefined })}
-                                  className="h-8 text-xs border rounded px-2 min-w-[140px]"
-                                >
-                                  <option value="">Pasivo (opcional)</option>
-                                  {liabilities.map(l => (
-                                    <option key={l.liabilityId} value={l.liabilityId}>{l.name}</option>
-                                  ))}
-                                </select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                                  value={getAmountDisplayValue(r)}
-                                  onChange={(e) => handleAmountChange(r.localId, e.target.value)}
-                                  onFocus={(e) => {
-                                    if (r.amount === 0) {
-                                      e.target.select();
-                                    }
-                                  }}
-                                  placeholder="0"
-                                  className="h-8 text-sm font-medium flex-1 max-w-[120px]"
-                                />
-                                <span className="text-xs text-muted-foreground">€</span>
-                                <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
-                                  Nuevo
-                                </Badge>
-                          </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => removeRow(r.localId)}
-                                className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
-                        >
-                                <Trash2 className="h-3 w-3" />
-                        </Button>
-                            </div>
-                  ))}
-            </div>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
                 );
