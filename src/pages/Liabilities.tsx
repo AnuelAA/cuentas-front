@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { getLiabilities, getLiabilityProgress, getTransactions, getCategories, getLiabilityTypes, createLiability, updateLiability, addLiabilitySnapshot, createLiabilityInterest, updateLiabilityInterest, deleteLiabilityInterest, deleteLiability, getLiabilityInterests } from '@/services/api';
 import type { Liability, LiabilityProgress, Transaction, Category, LiabilityType, Interest } from '@/types/api';
 import { Layout } from '@/components/Layout';
@@ -49,6 +50,7 @@ import { startOfMonth, format as formatDate, parseISO as parseISODate } from 'da
 
 const Liabilities: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [liabilityTypes, setLiabilityTypes] = useState<LiabilityType[]>([]);
   const [liabilityInterests, setLiabilityInterests] = useState<Record<number, Interest[]>>({});
@@ -700,7 +702,14 @@ const Liabilities: React.FC = () => {
                         : 'No registrado';
                       return (
                         <TableRow key={l.liabilityId} className="hover:bg-slate-50/50 transition-colors">
-                          <TableCell className="font-semibold">{l.name}</TableCell>
+                          <TableCell>
+                            <button
+                              onClick={() => navigate(`/liabilities/${l.liabilityId}`)}
+                              className="font-semibold hover:text-primary transition-colors cursor-pointer"
+                            >
+                              {l.name}
+                            </button>
+                          </TableCell>
                           <TableCell className="font-medium text-muted-foreground">
                             {liabilityType?.name ?? `Tipo ${l.liabilityTypeId}`}
                           </TableCell>

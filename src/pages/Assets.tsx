@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, deleteAsset } from '@/services/api';
 import type { Asset, AssetRoi, Transaction, Category, AssetType } from '@/types/api';
 import { Layout } from '@/components/Layout';
@@ -40,6 +41,7 @@ import { startOfMonth, format as formatDate } from 'date-fns';
 
 const Assets: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAssetRoi, setSelectedAssetRoi] = useState<AssetRoi | null>(null);
@@ -457,7 +459,14 @@ const Assets: React.FC = () => {
 
                       return (
                         <TableRow key={asset.assetId} className="hover:bg-slate-50/50 transition-colors">
-                          <TableCell className="font-semibold">{asset.name}</TableCell>
+                          <TableCell>
+                            <button
+                              onClick={() => navigate(`/assets/${asset.assetId}`)}
+                              className="font-semibold hover:text-primary transition-colors cursor-pointer"
+                            >
+                              {asset.name}
+                            </button>
+                          </TableCell>
                           <TableCell className="text-muted-foreground">{assetTypes.find(t => t.assetTypeId === asset.assetTypeId)?.name ?? `#${asset.assetTypeId}`}</TableCell>
                           <TableCell className="text-right font-medium text-muted-foreground">
                             {formatCurrency(asset.acquisitionValue)}

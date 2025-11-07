@@ -101,7 +101,8 @@ export interface Category {
   userId: number;
   name: string;
   description?: string;
-  type: 'income' | 'expense';
+  type?: 'income' | 'expense';
+  parentCategoryId?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -175,4 +176,47 @@ export interface Interest {
   annualRate: number;
   startDate: string;
   createdAt?: string;
+}
+
+// Detail types for new detail pages
+export interface CategoryDetail {
+  category: Category;
+  subcategories: Category[];
+  totalIncome: number;
+  totalExpenses: number;
+  netBalance: number;
+  transactionCount: number;
+  recentTransactions: Transaction[];
+}
+
+export interface AssetDetail {
+  asset: Asset;
+  currentValue: number;
+  totalIncome: number;
+  totalExpenses: number;
+  netProfit: number;
+  roiPercentage: number;
+  transactionCount: number;
+  recentTransactions: Transaction[];
+  valueHistory: Array<{
+    assetValueId: number;
+    valuationDate: string;
+    currentValue: number;
+  }>;
+}
+
+export interface LiabilityDetail {
+  liability: Liability;
+  currentOutstandingBalance: number;
+  principalPaid: number;
+  progressPercentage: number;
+  transactionCount: number;
+  recentTransactions: Transaction[];
+  valueHistory: Array<{
+    liabilityValueId: number;
+    valuationDate: string;
+    outstandingBalance: number;
+    endDate?: string;
+  }>;
+  interests: Interest[];
 }

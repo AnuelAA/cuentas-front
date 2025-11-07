@@ -19,6 +19,9 @@ import type {
   AssetType,
   LiabilityType,
   Interest,
+  CategoryDetail,
+  AssetDetail,
+  LiabilityDetail,
 } from '@/types/api';
 
 // URL base fija al backend; permite override con VITE_API_URL si se define
@@ -26,7 +29,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://46.101.144.147:808
 
 export const createCategory = async (
   userId: number,
-  payload: { name: string; type: 'income' | 'expense' }
+  payload: { name: string; type?: 'income' | 'expense'; description?: string; parentCategoryId?: number | null }
 ): Promise<Category> => {
   const response = await api.post<Category>(`/users/${userId}/categories`, payload);
   return response.data;
@@ -326,6 +329,22 @@ export const getCategories = async (userId: number): Promise<Category[]> => {
   return response.data;
 };
 
+export const updateCategory = async (
+  userId: number,
+  categoryId: number,
+  payload: { name?: string; description?: string; parentCategoryId?: number | null }
+): Promise<Category> => {
+  const response = await api.put<Category>(`/users/${userId}/categories/${categoryId}`, payload);
+  return response.data;
+};
+
+export const deleteCategory = async (
+  userId: number,
+  categoryId: number
+): Promise<void> => {
+  await api.delete(`/users/${userId}/categories/${categoryId}`);
+};
+
 // Asset ROI
 export const getAssetMonthlyRoi = async (
   userId: number,
@@ -530,6 +549,57 @@ export const deleteAsset = async (
   assetId: number
 ): Promise<void> => {
   await api.delete(`/users/${userId}/assets/${assetId}`);
+};
+
+// NEW ENDPOINTS - Categories hierarchy and detail pages
+
+// Get subcategories of a category
+export const getSubcategories = async (
+  userId: number,
+  categoryId: number
+): Promise<Category[]> => {
+  const response = await api.get<Category[]>(`/users/${userId}/categories/${categoryId}/subcategories`);
+  return response.data;
+};
+
+// Get category detail with statistics
+export const getCategoryDetail = async (
+  userId: number,
+  categoryId: number
+): Promise<CategoryDetail> => {
+  const response = await api.get<CategoryDetail>(`/users/${userId}/categories/${categoryId}/detail`);
+  return response.data;
+};
+
+// Reassign transactions before deleting a category
+export const reassignCategoryTransactions = async (
+  userId: number,
+  categoryId: number,
+  toCategoryId: number
+): Promise<{ message: string }> => {
+  const response = await api.post<{ message: string }>(
+    `/users/${userId}/categories/${categoryId}/reassign-transactions`,
+    { toCategoryId }
+  );
+  return response.data;
+};
+
+// Get asset detail with statistics and history
+export const getAssetDetail = async (
+  userId: number,
+  assetId: number
+): Promise<AssetDetail> => {
+  const response = await api.get<AssetDetail>(`/users/${userId}/assets/${assetId}/detail`);
+  return response.data;
+};
+
+// Get liability detail with statistics and history
+export const getLiabilityDetail = async (
+  userId: number,
+  liabilityId: number
+): Promise<LiabilityDetail> => {
+  const response = await api.get<LiabilityDetail>(`/users/${userId}/liabilities/${liabilityId}/detail`);
+  return response.data;
 };
 
 export default api;

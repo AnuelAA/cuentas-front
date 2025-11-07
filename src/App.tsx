@@ -13,6 +13,10 @@ import Assets from "./pages/Assets";
 import Liabilities from "./pages/Liabilities";
 import Transactions from "./pages/Transactions";
 import ExcelImport from './pages/ExcelImportExport';
+import Categories from "./pages/Categories";
+import CategoryDetail from "./pages/CategoryDetail";
+import AssetDetail from "./pages/AssetDetail";
+import LiabilityDetail from "./pages/LiabilityDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +70,38 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ExcelImport />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/categories"
+              element={
+                <ProtectedRoute>
+                  <Categories />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/categories/:categoryId"
+              element={
+                <ProtectedRoute>
+                  <CategoryDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/assets/:assetId"
+              element={
+                <ProtectedRoute>
+                  <AssetDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/liabilities/:liabilityId"
+              element={
+                <ProtectedRoute>
+                  <LiabilityDetail />
                 </ProtectedRoute>
               }
             />

@@ -8,7 +8,8 @@ import {
   LogOut,
   Menu,
   Wallet,
-  Upload
+  Upload,
+  FolderTree
 } from 'lucide-react';
 import {
   Sidebar,
@@ -48,6 +49,11 @@ const menuItems = [
     title: 'Transacciones',
     url: '/transactions',
     icon: ArrowLeftRight,
+  },
+  {
+    title: 'Categorías',
+    url: '/categories',
+    icon: FolderTree,
   },
   {
     title: 'Excel - Importar / Exportar',

@@ -2,6 +2,7 @@
 // `src/pages/Transactions.tsx`
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import {
   getTransactions,
   createTransaction,
@@ -34,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
 import { toast } from 'sonner';
@@ -62,6 +63,7 @@ type Row = {
 
 const Transactions: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const defaultStartDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const defaultEndDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');
@@ -1020,7 +1022,13 @@ const Transactions: React.FC = () => {
                       ) : (
                         <>
                           <div className="flex items-center gap-2">
-                            <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
+                            <button
+                              onClick={() => categoryGroup.categoryId && navigate(`/categories/${categoryGroup.categoryId}`)}
+                              className="text-base font-semibold hover:text-primary transition-colors cursor-pointer flex items-center gap-1 group"
+                            >
+                              {categoryGroup.categoryName}
+                              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -1320,7 +1328,13 @@ const Transactions: React.FC = () => {
                       ) : (
                         <>
                           <div className="flex items-center gap-2">
-                            <CardTitle className="text-base font-semibold">{categoryGroup.categoryName}</CardTitle>
+                            <button
+                              onClick={() => categoryGroup.categoryId && navigate(`/categories/${categoryGroup.categoryId}`)}
+                              className="text-base font-semibold hover:text-primary transition-colors cursor-pointer flex items-center gap-1 group"
+                            >
+                              {categoryGroup.categoryName}
+                              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
                             <Button
                               size="sm"
                               variant="ghost"
