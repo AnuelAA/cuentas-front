@@ -455,6 +455,24 @@ export const addAssetValuation = async (
   return response.data;
 };
 
+export const updateAssetValuation = async (
+  userId: number,
+  assetId: number,
+  valuationId: number,
+  payload: { valuationDate: string; currentValue: number; acquisitionValue?: number }
+): Promise<any> => {
+  const response = await api.put(`/users/${userId}/assets/${assetId}/valuations/${valuationId}`, payload);
+  return response.data;
+};
+
+export const deleteAssetValuation = async (
+  userId: number,
+  assetId: number,
+  valuationId: number
+): Promise<void> => {
+  await api.delete(`/users/${userId}/assets/${assetId}/valuations/${valuationId}`);
+};
+
 // ----- Liabilities: crear/actualizar/snapshot/interests -----
 export const createLiability = async (
   userId: number,

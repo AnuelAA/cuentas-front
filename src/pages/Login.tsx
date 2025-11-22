@@ -46,9 +46,9 @@ const Login: React.FC = () => {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
             <Wallet className="h-6 w-6 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-bold">FinanzasApp</CardTitle>
+          <CardTitle className="text-2xl font-bold">Joseliyo App</CardTitle>
           <CardDescription>
-            Ingresa tus credenciales para acceder a tu panel financiero
+            Gestión de finanzas personales - Creada por José N. para amigos y conocidos
           </CardDescription>
         </CardHeader>
         <CardContent>

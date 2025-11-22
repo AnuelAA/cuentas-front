@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, deleteAsset } from '@/services/api';
+import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, updateAssetValuation, deleteAssetValuation, deleteAsset } from '@/services/api';
 import type { Asset, AssetRoi, Transaction, Category, AssetType } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign, Calendar, Trash2, Pencil } from 'lucide-react';
+import { TrendingUp, TrendingDown, Eye, Save, Plus, RefreshCw, BarChart3, DollarSign, Calendar, Trash2, Pencil, Edit, Star, X } from 'lucide-react';
 import { format, parseISO, endOfMonth, subYears, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { MonthNavigator } from '@/components/MonthNavigator';
@@ -63,6 +63,12 @@ const Assets: React.FC = () => {
     const [assetValuations, setAssetValuations] = useState<Record<number, { currentValue: string; acquisitionValue?: string }>>({});
     const [deleteAssetDialogOpen, setDeleteAssetDialogOpen] = useState(false);
     const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
+    const [valuationsModalOpen, setValuationsModalOpen] = useState(false);
+    const [selectedAssetForValuations, setSelectedAssetForValuations] = useState<Asset | null>(null);
+    const [editingValuation, setEditingValuation] = useState<{ assetValueId: number; valuationDate: string; currentValue: number; acquisitionValue?: number } | null>(null);
+    const [deleteValuationDialogOpen, setDeleteValuationDialogOpen] = useState(false);
+    const [valuationToDelete, setValuationToDelete] = useState<{ assetId: number; assetValueId: number } | null>(null);
+    const [newAssetValuationDate, setNewAssetValuationDate] = useState<string>(formatDate(selectedMonth, 'yyyy-MM-01'));
   // Obtiene el assetValue para el mes seleccionado (valor + fecha)
   const getAssetValueForMonth = (asset: Asset, month: Date): { value: number; date: Date | null } => {
     if (!Array.isArray(asset.assetValues) || asset.assetValues.length === 0) {
@@ -192,11 +198,32 @@ const Assets: React.FC = () => {
       setAssetModalOpen(true);
     };
 
+    // Helper function to handle decimal input (commas work, points reset)
+    const handleDecimalInput = (value: string, setter: (val: number) => void) => {
+      // Replace comma with dot for internal processing
+      const normalized = value.replace(',', '.');
+      // If it contains a point (not comma), reset to 0
+      if (normalized.includes('.') && !value.includes(',')) {
+        setter(0);
+        return;
+      }
+      // Parse the value (with comma converted to dot)
+      const numValue = parseFloat(normalized);
+      if (!isNaN(numValue)) {
+        setter(numValue);
+      } else if (value === '' || value === '0') {
+        setter(0);
+      }
+    };
+
     const saveAssetForMonth = async () => {
       if (!user?.userId) return;
       try {
         let saved: Asset;
         const typeSelect = document.getElementById('asset-type-select') as HTMLSelectElement | null;
+        const dateInput = document.getElementById('new-asset-valuation-date') as HTMLInputElement | null;
+        const valuationDate = dateInput?.value || formatDate(selectedMonth, 'yyyy-MM-01');
+        
         if (editingAsset) {
           const maybeTypeId = typeSelect && typeSelect.value ? parseInt(typeSelect.value) : undefined;
           saved = await updateAsset(user.userId, editingAsset.assetId, { name: assetForm.name, assetTypeId: maybeTypeId, acquisitionValue: assetForm.acquisitionValue });
@@ -210,7 +237,7 @@ const Assets: React.FC = () => {
         }
         if (!editingAsset) {
           await addAssetValuation(user.userId, saved.assetId, {
-            valuationDate: formatDate(selectedMonth, 'yyyy-MM-01'),
+            valuationDate: valuationDate,
             currentValue: assetForm.currentValue,
             acquisitionValue: assetForm.acquisitionValue,
           });
@@ -248,14 +275,16 @@ const Assets: React.FC = () => {
         
         for (const [assetIdStr, values] of Object.entries(assetValuations)) {
           const assetId = Number(assetIdStr);
-          const currentValue = Number(values.currentValue || 0);
+          // Handle comma to dot conversion
+          const currentValueStr = (values.currentValue || '0').replace(',', '.');
+          const currentValue = parseFloat(currentValueStr);
           
           if (currentValue > 0) {
             promises.push(
               addAssetValuation(user.userId, assetId, {
                 valuationDate: valuationDate,
                 currentValue: currentValue,
-                acquisitionValue: values.acquisitionValue ? Number(values.acquisitionValue) : undefined,
+                acquisitionValue: values.acquisitionValue ? parseFloat((values.acquisitionValue || '0').replace(',', '.')) : undefined,
               })
             );
             count++;
@@ -275,6 +304,58 @@ const Assets: React.FC = () => {
       } catch (err: any) {
         console.error(err);
         toast.error(err.message || 'Error guardando valoraciones');
+      }
+    };
+
+    const openValuationsModal = (asset: Asset) => {
+      setSelectedAssetForValuations(asset);
+      setValuationsModalOpen(true);
+    };
+
+    const handleEditValuation = (valuation: { assetValueId: number; valuationDate: string; currentValue: number; acquisitionValue?: number }) => {
+      setEditingValuation(valuation);
+    };
+
+    const handleSaveValuation = async () => {
+      if (!user?.userId || !editingValuation || !selectedAssetForValuations) return;
+      try {
+        await updateAssetValuation(user.userId, selectedAssetForValuations.assetId, editingValuation.assetValueId, {
+          valuationDate: editingValuation.valuationDate,
+          currentValue: editingValuation.currentValue,
+          acquisitionValue: editingValuation.acquisitionValue,
+        });
+        toast.success('Valoración actualizada correctamente');
+        setEditingValuation(null);
+        fetchAssets();
+        // Refresh the selected asset
+        const updatedAssets = await getAssets(user.userId);
+        const updatedAsset = updatedAssets.find(a => a.assetId === selectedAssetForValuations.assetId);
+        if (updatedAsset) {
+          setSelectedAssetForValuations(updatedAsset);
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error('Error actualizando valoración');
+      }
+    };
+
+    const handleDeleteValuation = async () => {
+      if (!user?.userId || !valuationToDelete) return;
+      try {
+        await deleteAssetValuation(user.userId, valuationToDelete.assetId, valuationToDelete.assetValueId);
+        toast.success('Valoración eliminada correctamente');
+        setDeleteValuationDialogOpen(false);
+        setValuationToDelete(null);
+        fetchAssets();
+        // Refresh the selected asset
+        const updatedAssets = await getAssets(user.userId);
+        const updatedAsset = updatedAssets.find(a => a.assetId === selectedAssetForValuations?.assetId);
+        if (updatedAsset) {
+          setSelectedAssetForValuations(updatedAsset);
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error('Error eliminando valoración');
       }
     };
   const formatCurrency = (value: number) => {
@@ -498,6 +579,32 @@ const Assets: React.FC = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => {
+                                  localStorage.setItem(`primaryAsset_${user?.userId}`, String(asset.assetId));
+                                  toast.success(`${asset.name} marcado como activo principal`);
+                                  fetchAssets();
+                                }}
+                                className={`hover:bg-yellow-50 hover:text-yellow-600 transition-colors ${
+                                  localStorage.getItem(`primaryAsset_${user?.userId}`) === String(asset.assetId) 
+                                    ? 'bg-yellow-50 text-yellow-600' 
+                                    : ''
+                                }`}
+                                title="Marcar como principal"
+                              >
+                                <Star className={`h-4 w-4 ${localStorage.getItem(`primaryAsset_${user?.userId}`) === String(asset.assetId) ? 'fill-current' : ''}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openValuationsModal(asset)}
+                                className="hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                                title="Gestionar valoraciones"
+                              >
+                                <Calendar className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => openAssetModal(asset)}
                                 className="hover:bg-blue-50 hover:text-blue-600 transition-colors"
                                 title="Editar activo"
@@ -552,11 +659,28 @@ const Assets: React.FC = () => {
                 ))}
               </select>
               <Label>Valor adquisición</Label>
-              <Input type="number" value={String(assetForm.acquisitionValue)} onChange={(e) => setAssetForm(f => ({ ...f, acquisitionValue: Number(e.target.value || 0) }))} />
+              <Input 
+                type="text" 
+                value={assetForm.acquisitionValue === 0 ? '' : String(assetForm.acquisitionValue).replace('.', ',')} 
+                onChange={(e) => handleDecimalInput(e.target.value, (val) => setAssetForm(f => ({ ...f, acquisitionValue: val })))}
+                placeholder="0,00"
+              />
               {!editingAsset && (
                 <>
-                  <Label>Valor actual (para la valoración del mes)</Label>
-                  <Input type="number" value={String(assetForm.currentValue)} onChange={(e) => setAssetForm(f => ({ ...f, currentValue: Number(e.target.value || 0) }))} />
+                  <Label>Fecha de valoración</Label>
+                  <Input 
+                    type="date" 
+                    id="new-asset-valuation-date"
+                    value={newAssetValuationDate}
+                    onChange={(e) => setNewAssetValuationDate(e.target.value)}
+                  />
+                  <Label>Valor actual (para la valoración)</Label>
+                  <Input 
+                    type="text" 
+                    value={assetForm.currentValue === 0 ? '' : String(assetForm.currentValue).replace('.', ',')} 
+                    onChange={(e) => handleDecimalInput(e.target.value, (val) => setAssetForm(f => ({ ...f, currentValue: val })))}
+                    placeholder="0,00"
+                  />
                 </>
               )}
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
@@ -593,33 +717,43 @@ const Assets: React.FC = () => {
                         <div>
                           <Label>Valor actual *</Label>
                           <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
+                            type="text"
+                            placeholder="0,00"
                             value={assetValuations[asset.assetId]?.currentValue || ''}
-                            onChange={(e) => setAssetValuations(prev => ({
-                              ...prev,
-                              [asset.assetId]: {
-                                ...prev[asset.assetId],
-                                currentValue: e.target.value,
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // Only allow numbers, commas, and empty string
+                              if (value === '' || /^[\d,]+$/.test(value)) {
+                                setAssetValuations(prev => ({
+                                  ...prev,
+                                  [asset.assetId]: {
+                                    ...prev[asset.assetId],
+                                    currentValue: value,
+                                  }
+                                }));
                               }
-                            }))}
+                            }}
                           />
                         </div>
                         <div>
                           <Label>Valor adquisición (opcional)</Label>
                           <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
+                            type="text"
+                            placeholder="0,00"
                             value={assetValuations[asset.assetId]?.acquisitionValue || ''}
-                            onChange={(e) => setAssetValuations(prev => ({
-                              ...prev,
-                              [asset.assetId]: {
-                                ...prev[asset.assetId],
-                                acquisitionValue: e.target.value,
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // Only allow numbers, commas, and empty string
+                              if (value === '' || /^[\d,]+$/.test(value)) {
+                                setAssetValuations(prev => ({
+                                  ...prev,
+                                  [asset.assetId]: {
+                                    ...prev[asset.assetId],
+                                    acquisitionValue: value,
+                                  }
+                                }));
                               }
-                            }))}
+                            }}
                           />
                         </div>
                       </div>
@@ -767,6 +901,164 @@ const Assets: React.FC = () => {
             )}
           </DialogContent>
         </Dialog>
+        <Dialog open={valuationsModalOpen} onOpenChange={setValuationsModalOpen}>
+          <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Valoraciones de {selectedAssetForValuations?.name}</DialogTitle>
+            </DialogHeader>
+            {selectedAssetForValuations && (
+              <div className="space-y-4">
+                {selectedAssetForValuations.assetValues && selectedAssetForValuations.assetValues.length > 0 ? (
+                  <div className="space-y-2">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead className="text-right">Valor Actual</TableHead>
+                          <TableHead className="text-right">Valor Adquisición</TableHead>
+                          <TableHead className="text-center">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedAssetForValuations.assetValues
+                          .sort((a, b) => new Date(b.valuationDate).getTime() - new Date(a.valuationDate).getTime())
+                          .map((valuation) => {
+                            const isEditing = editingValuation?.assetValueId === (valuation as any).assetValueId;
+                            return (
+                              <TableRow key={(valuation as any).assetValueId}>
+                                <TableCell>
+                                  {isEditing ? (
+                                    <Input
+                                      type="date"
+                                      value={editingValuation.valuationDate}
+                                      onChange={(e) => setEditingValuation({ ...editingValuation, valuationDate: e.target.value })}
+                                      className="h-8"
+                                    />
+                                  ) : (
+                                    format(parseISO(valuation.valuationDate), 'dd/MM/yyyy')
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {isEditing ? (
+                                    <Input
+                                      type="text"
+                                      value={String(editingValuation.currentValue).replace('.', ',')}
+                                      onChange={(e) => {
+                                        const value = e.target.value.replace(',', '.');
+                                        const numValue = parseFloat(value);
+                                        if (!isNaN(numValue)) {
+                                          setEditingValuation({ ...editingValuation, currentValue: numValue });
+                                        }
+                                      }}
+                                      className="h-8 text-right"
+                                    />
+                                  ) : (
+                                    formatCurrency(valuation.currentValue)
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {isEditing ? (
+                                    <Input
+                                      type="text"
+                                      value={editingValuation.acquisitionValue ? String(editingValuation.acquisitionValue).replace('.', ',') : ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value.replace(',', '.');
+                                        const numValue = parseFloat(value);
+                                        if (!isNaN(numValue) || value === '') {
+                                          setEditingValuation({ ...editingValuation, acquisitionValue: value === '' ? undefined : numValue });
+                                        }
+                                      }}
+                                      className="h-8 text-right"
+                                    />
+                                  ) : (
+                                    valuation.acquisitionValue ? formatCurrency(valuation.acquisitionValue) : '—'
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {isEditing ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleSaveValuation}
+                                        className="h-7 px-2 text-success hover:bg-success/10"
+                                      >
+                                        <Save className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setEditingValuation(null)}
+                                        className="h-7 px-2 text-destructive hover:bg-destructive/10"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleEditValuation({
+                                          assetValueId: (valuation as any).assetValueId,
+                                          valuationDate: valuation.valuationDate,
+                                          currentValue: valuation.currentValue,
+                                          acquisitionValue: valuation.acquisitionValue,
+                                        })}
+                                        className="h-7 px-2 hover:bg-blue-50 hover:text-blue-600"
+                                      >
+                                        <Edit className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setValuationToDelete({
+                                            assetId: selectedAssetForValuations.assetId,
+                                            assetValueId: (valuation as any).assetValueId,
+                                          });
+                                          setDeleteValuationDialogOpen(true);
+                                        }}
+                                        className="h-7 px-2 hover:bg-red-50 hover:text-red-600"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">No hay valoraciones registradas</p>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+        <AlertDialog open={deleteValuationDialogOpen} onOpenChange={setDeleteValuationDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción eliminará permanentemente esta valoración.
+                <strong className="text-destructive mt-2 block">Esta operación NO SE PUEDE DESHACER.</strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteValuation}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog open={deleteAssetDialogOpen} onOpenChange={setDeleteAssetDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>

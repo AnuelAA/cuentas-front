@@ -1,6 +1,6 @@
-# FinanzasApp - Dashboard Financiero Personal
+# Joseliyo App - Gestión de Finanzas Personales
 
-Una aplicación web moderna y profesional para gestionar tus finanzas personales. Controla activos, pasivos, ingresos y gastos desde un dashboard intuitivo con gráficos interactivos.
+Aplicación web creada por José N. para que sus amigos y conocidos puedan gestionar sus finanzas personales de manera sencilla y profesional. Controla activos, pasivos, ingresos y gastos desde un dashboard intuitivo con gráficos interactivos.
 
 ## 🚀 Características
 
@@ -193,10 +193,10 @@ Los archivos generados estarán en la carpeta `dist/` y pueden ser desplegados e
 - GitHub Pages
 - Lovable (clic en "Publish")
 
-## 📄 Licencia
+## 📄 Sobre el Proyecto
 
-Este proyecto fue creado con [Lovable](https://lovable.dev)
+Esta aplicación fue creada por **José N.** como una herramienta personal para que sus amigos y conocidos puedan gestionar sus finanzas de manera profesional y sencilla.
 
 ---
 
-**URL del Proyecto**: https://lovable.dev/projects/c3330d1f-03d7-4936-b382-9938669a0db9
+**Desarrollado por**: José N.

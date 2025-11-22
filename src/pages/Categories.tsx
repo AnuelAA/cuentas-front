@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getCategories, createCategory, updateCategory, deleteCategory, reassignCategoryTransactions } from '@/services/api';
+import { getCategories, createCategory, updateCategory, deleteCategory, reassignCategoryTransactions, getTransactions } from '@/services/api';
 import type { Category } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { FolderOpen, FolderPlus, Edit2, Trash2, Plus, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { format, parseISO } from 'date-fns';
 
 interface CategoryTree extends Category {
   children: CategoryTree[];
@@ -46,6 +47,7 @@ const Categories: React.FC = () => {
   const [categoryTree, setCategoryTree] = useState<CategoryTree[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const [transactions, setTransactions] = useState<any[]>([]);
   
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -64,7 +66,18 @@ const Categories: React.FC = () => {
 
   useEffect(() => {
     fetchCategories();
+    fetchTransactions();
   }, [user]);
+
+  const fetchTransactions = async () => {
+    if (!user?.userId) return;
+    try {
+      const data = await getTransactions(user.userId);
+      setTransactions(data);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
 
   useEffect(() => {
     if (categories.length > 0) {
@@ -86,15 +99,34 @@ const Categories: React.FC = () => {
     }
   };
 
+  const getCategoryFirstDate = (categoryId: number): string | null => {
+    // Get first transaction date for this category
+    const categoryTransactions = transactions.filter(t => t.categoryId === categoryId);
+    if (categoryTransactions.length > 0) {
+      const sorted = [...categoryTransactions].sort((a, b) => 
+        new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()
+      );
+      return sorted[0].transactionDate;
+    }
+    return null;
+  };
+
   const buildTree = () => {
-    const roots = categories.filter(c => c.parentCategoryId === null || c.parentCategoryId === undefined);
+    // Sort categories by name
+    const sortedCategories = [...categories].sort((a, b) => 
+      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
+    );
+    const roots = sortedCategories.filter(c => c.parentCategoryId === null || c.parentCategoryId === undefined);
     const tree = roots.map(root => buildNode(root));
+    // Sort tree by name
+    tree.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
     setCategoryTree(tree);
   };
 
   const buildNode = (category: Category): CategoryTree => {
     const children = categories
       .filter(c => c.parentCategoryId === category.categoryId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .map(child => buildNode(child));
     return { ...category, children };
   };
@@ -244,8 +276,28 @@ const Categories: React.FC = () => {
             {node.name}
           </button>
           
+          <span className="text-sm text-muted-foreground hidden md:block">
+            {(() => {
+              const firstTransactionDate = getCategoryFirstDate(node.categoryId);
+              if (firstTransactionDate) {
+                try {
+                  return `Primera transacción: ${format(parseISO(firstTransactionDate), 'dd/MM/yyyy')}`;
+                } catch {
+                  return `Primera transacción: ${firstTransactionDate}`;
+                }
+              } else if (node.createdAt) {
+                try {
+                  return `Creada: ${format(parseISO(node.createdAt), 'dd/MM/yyyy')}`;
+                } catch {
+                  return `Creada: ${node.createdAt}`;
+                }
+              }
+              return '';
+            })()}
+          </span>
+          
           {node.description && (
-            <span className="text-sm text-muted-foreground hidden md:block">
+            <span className="text-sm text-muted-foreground hidden lg:block">
               {node.description}
             </span>
           )}

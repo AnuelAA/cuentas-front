@@ -67,7 +67,17 @@ const Transactions: React.FC = () => {
 
   const defaultStartDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const defaultEndDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');
-  const defaultNewDate = defaultStartDate; // primer día del mes por defecto en filas nuevas
+  // Get last transaction date or default to first day of month
+  const getDefaultNewDate = () => {
+    if (transactions.length > 0) {
+      const sorted = [...transactions].sort((a, b) => 
+        new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+      );
+      return sorted[0].transactionDate;
+    }
+    return defaultStartDate;
+  };
+  const defaultNewDate = getDefaultNewDate();
   // cache local para evitar crear la misma categoría varias veces
   const categoryCache = React.useRef<Record<string, number>>({});
 
@@ -201,13 +211,16 @@ const Transactions: React.FC = () => {
 
   const addEmptyRow = (type?: 'income' | 'expense') => {
     const newLocalId = `new-${Date.now()}-${Math.random()}`;
+    const lastDate = transactions.length > 0 
+      ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+      : defaultStartDate;
     setRows(prev => [
       ...prev,
       {
         localId: newLocalId,
         isNew: true,
-        type: type,
-        transactionDate: defaultNewDate,
+        type: type || 'expense', // Default to expense
+        transactionDate: lastDate,
         description: '',
         amount: 0,
       } as Row,
@@ -624,15 +637,18 @@ const Transactions: React.FC = () => {
   // Función para añadir una nueva transacción a una categoría específica
   const addEmptyRowToCategory = (categoryName: string, categoryId?: number, type?: 'income' | 'expense') => {
     const newLocalId = `new-${Date.now()}-${Math.random()}`;
+    const lastDate = transactions.length > 0 
+      ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+      : defaultStartDate;
     setRows(prev => [
       ...prev,
       {
         localId: newLocalId,
         isNew: true,
-        type: type,
+        type: type || 'expense', // Default to expense
         categoryName,
         categoryId,
-        transactionDate: defaultNewDate,
+        transactionDate: lastDate,
         description: '',
         amount: 0,
       } as Row,
@@ -868,17 +884,28 @@ const Transactions: React.FC = () => {
               <Select onValueChange={(v) => {
                 const el = document.getElementById('quick-type') as HTMLInputElement | null;
                 if (el) el.value = v;
-              }}>
+              }} defaultValue="expense">
                 <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Tipo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="income">Ingreso</SelectItem>
                   <SelectItem value="expense">Gasto</SelectItem>
                 </SelectContent>
               </Select>
-              <input id="quick-type" type="hidden" />
-              <Input type="date" id="quick-date" defaultValue={defaultNewDate} className="h-9 text-sm w-full" />
+              <input id="quick-type" type="hidden" defaultValue="expense" />
+              <Input 
+                type="date" 
+                id="quick-date" 
+                defaultValue={transactions.length > 0 
+                  ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                  : defaultStartDate} 
+                className="h-9 text-sm w-full" 
+              />
               <Input type="number" step="0.01" placeholder="Importe" id="quick-amount" className="h-9 text-sm w-full xl:col-span-2" />
-              <select id="quick-asset" className="h-9 text-sm border rounded px-2 w-full xl:max-w-[180px]">
+              <select 
+                id="quick-asset" 
+                className="h-9 text-sm border rounded px-2 w-full xl:max-w-[180px]"
+                defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+              >
                 <option value="">Activo</option>
                 {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
               </select>
@@ -901,8 +928,11 @@ const Transactions: React.FC = () => {
                   const relAssetEl = document.getElementById('quick-related-asset') as HTMLSelectElement | null;
                   const liabEl = document.getElementById('quick-liability') as HTMLSelectElement | null;
                   const categoryName = catEl?.value?.trim();
-                  const type = (typeEl?.value as 'income' | 'expense' | '') || '';
-                  const date = dateEl?.value || defaultNewDate;
+                  const type = (typeEl?.value as 'income' | 'expense' | '') || 'expense';
+                  const lastDate = transactions.length > 0 
+                    ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                    : defaultStartDate;
+                  const date = dateEl?.value || lastDate;
                   const amount = amountEl?.value ? parseFloat(amountEl.value) : NaN;
                   const assetId = assetEl?.value ? parseInt(assetEl.value) : undefined;
                   const relatedAssetId = relAssetEl?.value ? parseInt(relAssetEl.value) : undefined;
@@ -1166,7 +1196,9 @@ const Transactions: React.FC = () => {
                     <Input
                       type="date"
                       id={`date-income-${categoryGroup.categoryId || categoryGroup.categoryName}`}
-                      defaultValue={defaultNewDate}
+                      defaultValue={transactions.length > 0 
+                        ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                        : defaultStartDate}
                       className="h-9 text-sm w-full"
                     />
                     <Input
@@ -1176,7 +1208,11 @@ const Transactions: React.FC = () => {
                       id={`amount-income-${categoryGroup.categoryId || categoryGroup.categoryName}`}
                       className="h-9 w-full text-sm font-medium"
                     />
-                    <select id={`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
+                    <select 
+                      id={`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} 
+                      className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]"
+                      defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+                    >
                       <option value="">Activo</option>
                       {assets.map(a => (
                         <option key={a.assetId} value={a.assetId}>{a.name}</option>
@@ -1203,7 +1239,10 @@ const Transactions: React.FC = () => {
                         const relatedAssetInput = document.getElementById(`related-asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
                         const liabilityInput = document.getElementById(`liability-income-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
                         const amount = amountInput?.value ? parseFloat(amountInput.value) : NaN;
-                        const date = dateInput?.value || defaultNewDate;
+                        const lastDate = transactions.length > 0 
+                          ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                          : defaultStartDate;
+                        const date = dateInput?.value || lastDate;
                         const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
                         const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
                         const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
@@ -1231,7 +1270,12 @@ const Transactions: React.FC = () => {
                             
                             // Limpiar campos
                             if (amountInput) amountInput.value = '';
-                            if (dateInput) dateInput.value = defaultNewDate;
+                            if (dateInput) {
+                              const lastDate = transactions.length > 0 
+                                ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                                : defaultStartDate;
+                              dateInput.value = lastDate;
+                            }
                             if (assetInput) assetInput.value = '';
                             if (relatedAssetInput) relatedAssetInput.value = '';
                             if (liabilityInput) liabilityInput.value = '';
@@ -1472,7 +1516,9 @@ const Transactions: React.FC = () => {
                         <Input
                           type="date"
                           id={`date-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`}
-                          defaultValue={defaultNewDate}
+                          defaultValue={transactions.length > 0 
+                            ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                            : defaultStartDate}
                           className="h-9 text-sm w-full"
                         />
                         <Input
@@ -1482,7 +1528,11 @@ const Transactions: React.FC = () => {
                           id={`amount-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`}
                           className="h-9 w-full text-sm font-medium"
                         />
-                        <select id={`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]">
+                        <select 
+                          id={`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} 
+                          className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]"
+                          defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+                        >
                           <option value="">Activo</option>
                           {assets.map(a => (
                             <option key={a.assetId} value={a.assetId}>{a.name}</option>
@@ -1509,7 +1559,10 @@ const Transactions: React.FC = () => {
                             const relatedAssetInput = document.getElementById(`related-asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
                             const liabilityInput = document.getElementById(`liability-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`) as HTMLSelectElement;
                             const amount = amountInput?.value ? parseFloat(amountInput.value) : NaN;
-                            const date = dateInput?.value || defaultNewDate;
+                            const lastDate = transactions.length > 0 
+                              ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                              : defaultStartDate;
+                            const date = dateInput?.value || lastDate;
                             const assetId = assetInput && assetInput.value ? parseInt(assetInput.value) : undefined;
                             const relatedAssetId = relatedAssetInput && relatedAssetInput.value ? parseInt(relatedAssetInput.value) : undefined;
                             const liabilityId = liabilityInput && liabilityInput.value ? parseInt(liabilityInput.value) : undefined;
@@ -1537,7 +1590,12 @@ const Transactions: React.FC = () => {
                                 
                                 // Limpiar campos
                                 if (amountInput) amountInput.value = '';
-                                if (dateInput) dateInput.value = defaultNewDate;
+                                if (dateInput) {
+                                  const lastDate = transactions.length > 0 
+                                    ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+                                    : defaultStartDate;
+                                  dateInput.value = lastDate;
+                                }
                                 if (assetInput) assetInput.value = '';
                                 if (relatedAssetInput) relatedAssetInput.value = '';
                                 if (liabilityInput) liabilityInput.value = '';

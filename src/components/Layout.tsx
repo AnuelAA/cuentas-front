@@ -76,7 +76,7 @@ const AppSidebar: React.FC = () => {
             <Wallet className="h-6 w-6" />
             {!isCollapsed && (
               <SidebarGroupLabel className="text-base font-semibold">
-                FinanzasApp
+                Joseliyo App
               </SidebarGroupLabel>
             )}
           </div>
