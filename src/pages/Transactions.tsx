@@ -67,8 +67,13 @@ const Transactions: React.FC = () => {
 
   const defaultStartDate = format(startOfMonth(new Date()), 'yyyy-MM-dd');
   const defaultEndDate = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+  // cache local para evitar crear la misma categoría varias veces
+  const categoryCache = React.useRef<Record<string, number>>({});
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  
   // Get last transaction date or default to first day of month
-  const getDefaultNewDate = () => {
+  const getDefaultNewDate = useMemo(() => {
     if (transactions.length > 0) {
       const sorted = [...transactions].sort((a, b) => 
         new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
@@ -76,12 +81,9 @@ const Transactions: React.FC = () => {
       return sorted[0].transactionDate;
     }
     return defaultStartDate;
-  };
-  const defaultNewDate = getDefaultNewDate();
-  // cache local para evitar crear la misma categoría varias veces
-  const categoryCache = React.useRef<Record<string, number>>({});
-
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  }, [transactions, defaultStartDate]);
+  
+  const defaultNewDate = getDefaultNewDate;
   const [rows, setRows] = useState<Row[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);

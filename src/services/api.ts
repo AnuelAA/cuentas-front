@@ -56,14 +56,21 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expirado o inválido
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Token expirado, inválido o sin permisos
+      // Limpiar todos los datos de autenticación
       localStorage.removeItem('token');
       localStorage.removeItem('userId');
       localStorage.removeItem('user');
-      // Solo redirigir si no estamos ya en login
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      localStorage.removeItem('email');
+      localStorage.removeItem('name');
+      
+      // Redirigir al login si no estamos ya ahí
+      if (window.location.pathname !== '/login' && 
+          window.location.pathname !== '/signup' && 
+          window.location.pathname !== '/reset-password') {
+        // Usar replace para evitar que el usuario pueda volver atrás
+        window.location.replace('/login');
       }
     }
     return Promise.reject(error);
