@@ -181,6 +181,23 @@ export const getAssets = async (userId: number): Promise<Asset[]> => {
   return response.data;
 };
 
+export const getPrimaryAsset = async (userId: number): Promise<Asset | null> => {
+  try {
+    const response = await api.get<Asset>(`/users/${userId}/assets/primary`);
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      return null; // No hay activo principal
+    }
+    throw error;
+  }
+};
+
+export const setPrimaryAsset = async (userId: number, assetId: number): Promise<Asset> => {
+  const response = await api.put<Asset>(`/users/${userId}/assets/${assetId}/set-primary`);
+  return response.data;
+};
+
 // Asset Types
 export const getAssetTypes = async (): Promise<AssetType[]> => {
   const response = await api.get<AssetType[]>('/asset-types');
@@ -438,7 +455,7 @@ export const exportExcel = async (
 // ----- Assets: crear/actualizar/valuación (stubs) -----
 export const createAsset = async (
   userId: number,
-  payload: { name: string; assetTypeId: number; acquisitionValue?: number; currentValue?: number }
+  payload: { name: string; assetTypeId: number; acquisitionValue?: number; currentValue?: number; isPrimary?: boolean }
 ): Promise<Asset> => {
   const response = await api.post<Asset>(`/users/${userId}/assets`, payload);
   return response.data;
@@ -447,7 +464,7 @@ export const createAsset = async (
 export const updateAsset = async (
   userId: number,
   assetId: number,
-  payload: Partial<{ name: string; assetTypeId?: number; acquisitionValue?: number; currentValue?: number }>
+  payload: Partial<{ name: string; assetTypeId?: number; acquisitionValue?: number; currentValue?: number; isPrimary?: boolean }>
 ): Promise<Asset> => {
   const response = await api.put<Asset>(`/users/${userId}/assets/${assetId}`, payload);
   return response.data;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, updateAssetValuation, deleteAssetValuation, deleteAsset } from '@/services/api';
+import { getAssets, getAssetRoi, getTransactions, getCategories, getAssetTypes, createAsset, updateAsset, addAssetValuation, updateAssetValuation, deleteAssetValuation, deleteAsset, setPrimaryAsset } from '@/services/api';
 import type { Asset, AssetRoi, Transaction, Category, AssetType } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -579,19 +579,25 @@ const Assets: React.FC = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  localStorage.setItem(`primaryAsset_${user?.userId}`, String(asset.assetId));
-                                  toast.success(`${asset.name} marcado como activo principal`);
-                                  fetchAssets();
+                                onClick={async () => {
+                                  if (!user?.userId) return;
+                                  try {
+                                    await setPrimaryAsset(user.userId, asset.assetId);
+                                    toast.success(`${asset.name} marcado como activo principal`);
+                                    fetchAssets();
+                                  } catch (error) {
+                                    console.error('Error estableciendo activo principal:', error);
+                                    toast.error('Error al marcar el activo como principal');
+                                  }
                                 }}
                                 className={`hover:bg-yellow-50 hover:text-yellow-600 transition-colors ${
-                                  localStorage.getItem(`primaryAsset_${user?.userId}`) === String(asset.assetId) 
+                                  asset.isPrimary 
                                     ? 'bg-yellow-50 text-yellow-600' 
                                     : ''
                                 }`}
                                 title="Marcar como principal"
                               >
-                                <Star className={`h-4 w-4 ${localStorage.getItem(`primaryAsset_${user?.userId}`) === String(asset.assetId) ? 'fill-current' : ''}`} />
+                                <Star className={`h-4 w-4 ${asset.isPrimary ? 'fill-current' : ''}`} />
                               </Button>
                               <Button
                                 variant="ghost"

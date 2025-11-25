@@ -39,6 +39,7 @@ export interface Asset {
   acquisitionDate?: string;
   acquisitionValue: number;
   currentValue: number;
+  isPrimary?: boolean;
   assetValues?: Array<{
     valuationDate: string;
     currentValue: number;

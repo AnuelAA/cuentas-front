@@ -13,6 +13,7 @@ import {
   getAssets,
   getLiabilities,
   createCategory,
+  getPrimaryAsset,
 } from '@/services/api';
 import type { Transaction, Category, CreateTransactionRequest, Asset, Liability } from '@/types/api';
 import { Layout } from '@/components/Layout';
@@ -159,17 +160,21 @@ const Transactions: React.FC = () => {
     }
   };
 
+  const [primaryAssetId, setPrimaryAssetId] = useState<number | null>(null);
+
   const fetchMetadata = async () => {
     if (!user?.userId) return;
     try {
-      const [cats, as, ls] = await Promise.all([
+      const [cats, as, ls, primaryAsset] = await Promise.all([
         getCategories(user.userId),
         getAssets(user.userId),
         getLiabilities(user.userId),
+        getPrimaryAsset(user.userId).catch(() => null), // Si no hay activo principal, retorna null
       ]);
       setCategories(cats);
       setAssets(as);
       setLiabilities(ls);
+      setPrimaryAssetId(primaryAsset?.assetId || null);
     } catch (error) {
       console.error('Error fetching metadata:', error);
     }
@@ -906,7 +911,7 @@ const Transactions: React.FC = () => {
               <select 
                 id="quick-asset" 
                 className="h-9 text-sm border rounded px-2 w-full xl:max-w-[180px]"
-                defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+                defaultValue={primaryAssetId ? String(primaryAssetId) : ''}
               >
                 <option value="">Activo</option>
                 {assets.map(a => (<option key={a.assetId} value={a.assetId}>{a.name}</option>))}
@@ -1213,7 +1218,7 @@ const Transactions: React.FC = () => {
                     <select 
                       id={`asset-income-${categoryGroup.categoryId || categoryGroup.categoryName}`} 
                       className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]"
-                      defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+                      defaultValue={primaryAssetId ? String(primaryAssetId) : ''}
                     >
                       <option value="">Activo</option>
                       {assets.map(a => (
@@ -1533,7 +1538,7 @@ const Transactions: React.FC = () => {
                         <select 
                           id={`asset-expense-${categoryGroup.categoryId || categoryGroup.categoryName}`} 
                           className="h-9 text-sm border rounded px-2 w-full lg:max-w-[180px]"
-                          defaultValue={user?.userId ? (localStorage.getItem(`primaryAsset_${user.userId}`) || '') : ''}
+                          defaultValue={primaryAssetId ? String(primaryAssetId) : ''}
                         >
                           <option value="">Activo</option>
                           {assets.map(a => (
