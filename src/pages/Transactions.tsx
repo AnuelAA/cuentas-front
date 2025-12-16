@@ -836,38 +836,8 @@ const Transactions: React.FC = () => {
     toast.success('Transacciones exportadas a CSV');
   };
 
-  // Atajos de teclado
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + K: Toggle modo rápido
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setQuickMode(prev => !prev);
-      }
-      // Ctrl/Cmd + S: Guardar todas (si hay cambios)
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        const hasNewRows = rows.some(r => r.isNew);
-        if (hasNewRows && user?.userId) {
-          handleSaveAll();
-        }
-      }
-      // Ctrl/Cmd + E: Exportar CSV
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault();
-        exportToCSV();
-      }
-      // Esc: Salir del modo rápido
-      if (e.key === 'Escape' && quickMode) {
-        setQuickMode(false);
-        setQuickModeCount(0);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickMode, rows, user?.userId]);
+  // Atajos de teclado - temporalmente deshabilitados para evitar errores de React
+  // TODO: Reimplementar de forma más segura usando useRef o eliminando dependencias problemáticas
 
   return (
     <Layout>
