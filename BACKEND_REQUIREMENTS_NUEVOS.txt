@@ -1,6 +1,9 @@
 # 📋 REQUERIMIENTOS DEL BACKEND - NUEVAS FUNCIONALIDADES
 # Joseliyo App - Frontend Requirements
 
+**⚠️ ESTADO: IMPLEMENTADO ✅**
+El backend ha implementado todos los endpoints especificados. Ver documentación del backend para detalles de implementación.
+
 Este documento especifica exactamente qué debe implementar el backend para soportar las nuevas funcionalidades del frontend.
 
 ---

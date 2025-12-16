@@ -14,8 +14,13 @@ import {
   getLiabilities,
   createCategory,
   getPrimaryAsset,
+  getBudgetStatus,
+  getTransactionTemplates,
+  createTransactionTemplate,
+  updateTransactionTemplate,
+  deleteTransactionTemplate,
 } from '@/services/api';
-import type { Transaction, Category, CreateTransactionRequest, Asset, Liability } from '@/types/api';
+import type { Transaction, Category, CreateTransactionRequest, Asset, Liability, BudgetStatus, TransactionTemplate } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -37,9 +42,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle, FileText, Copy, Table2, CalendarDays } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 type Row = {
@@ -90,6 +102,8 @@ const Transactions: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus[]>([]);
+  const [templates, setTemplates] = useState<TransactionTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
@@ -110,6 +124,31 @@ const Transactions: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table'); // Modo de vista: tabla o calendario
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(undefined); // Fecha seleccionada en calendario
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date()); // Mes actual del calendario
+  
+  // Template states
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<TransactionTemplate | null>(null);
+  const [templateForm, setTemplateForm] = useState<{
+    name: string;
+    categoryId?: number | null;
+    categoryName?: string;
+    type: 'income' | 'expense';
+    amount: string;
+    assetId?: number | null;
+    liabilityId?: number | null;
+    description?: string;
+  }>({
+    name: '',
+    categoryId: null,
+    categoryName: '',
+    type: 'expense',
+    amount: '',
+    assetId: null,
+    liabilityId: null,
+    description: '',
+  });
+  const [deleteTemplateDialogOpen, setDeleteTemplateDialogOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<TransactionTemplate | null>(null);
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -179,15 +218,22 @@ const Transactions: React.FC = () => {
   const fetchMetadata = async () => {
     if (!user?.userId) return;
     try {
-      const [cats, as, ls, primaryAsset] = await Promise.all([
+      const today = new Date();
+      const start = format(startOfMonth(today), 'yyyy-MM-dd');
+      const end = format(endOfMonth(today), 'yyyy-MM-dd');
+      const [cats, as, ls, primaryAsset, budgetStatusData, templatesData] = await Promise.all([
         getCategories(user.userId),
         getAssets(user.userId),
         getLiabilities(user.userId),
-        getPrimaryAsset(user.userId).catch(() => null), // Si no hay activo principal, retorna null
+        getPrimaryAsset(user.userId).catch(() => null),
+        getBudgetStatus(user.userId, start, end).catch(() => []),
+        getTransactionTemplates(user.userId).catch(() => []),
       ]);
       setCategories(cats);
       setAssets(as);
       setLiabilities(ls);
+      setBudgetStatus(budgetStatusData || []);
+      setTemplates(templatesData || []);
       setPrimaryAssetId(primaryAsset?.assetId || null);
     } catch (error) {
       console.error('Error fetching metadata:', error);
@@ -529,6 +575,38 @@ const Transactions: React.FC = () => {
           results.updated += 1;
         } catch (err) {
           results.updateFailures.push({ transactionId: txId, transaction: u.payload, error: err });
+        }
+      }
+
+      // Verificar presupuestos después de guardar
+      const expenseTransactions = [...toCreate, ...toUpdate.map(u => u.payload)].filter(t => t.type === 'expense');
+      if (expenseTransactions.length > 0) {
+        try {
+          const today = new Date();
+          const start = format(startOfMonth(today), 'yyyy-MM-dd');
+          const end = format(endOfMonth(today), 'yyyy-MM-dd');
+          const updatedBudgetStatus = await getBudgetStatus(user.userId, start, end);
+          setBudgetStatus(updatedBudgetStatus || []);
+          
+          // Mostrar alertas para presupuestos excedidos
+          expenseTransactions.forEach(tx => {
+            if (tx.categoryId) {
+              const budget = updatedBudgetStatus?.find(bs => bs.categoryId === tx.categoryId);
+              if (budget && budget.isExceeded) {
+                toast.warning(
+                  `⚠️ Presupuesto excedido: ${budget.categoryName} (${Math.round(budget.percentageUsed)}% usado)`,
+                  { duration: 5000 }
+                );
+              } else if (budget && budget.percentageUsed >= 80) {
+                toast.info(
+                  `💰 Presupuesto cerca del límite: ${budget.categoryName} (${Math.round(budget.percentageUsed)}% usado)`,
+                  { duration: 3000 }
+                );
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Error checking budget status:', error);
         }
       }
 
@@ -904,6 +982,144 @@ const Transactions: React.FC = () => {
     return insights.slice(0, 5); // Máximo 5 insights
   }, [filteredRows, categories]);
 
+  // Template handlers
+  const handleOpenTemplateDialog = (template?: TransactionTemplate) => {
+    if (template) {
+      setEditingTemplate(template);
+      setTemplateForm({
+        name: template.name,
+        categoryId: template.categoryId || null,
+        categoryName: template.categoryName || '',
+        type: template.type,
+        amount: template.amount.toString(),
+        assetId: template.assetId || null,
+        liabilityId: template.liabilityId || null,
+        description: template.description || '',
+      });
+    } else {
+      setEditingTemplate(null);
+      setTemplateForm({
+        name: '',
+        categoryId: null,
+        categoryName: '',
+        type: 'expense',
+        amount: '',
+        assetId: primaryAssetId,
+        liabilityId: null,
+        description: '',
+      });
+    }
+    setTemplateDialogOpen(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!user?.userId) return;
+    if (!templateForm.name.trim()) {
+      toast.error('El nombre de la plantilla es obligatorio');
+      return;
+    }
+    if (!templateForm.amount || parseFloat(templateForm.amount) <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
+
+    try {
+      const payload = {
+        name: templateForm.name,
+        categoryId: templateForm.categoryId || null,
+        categoryName: templateForm.categoryName || undefined,
+        type: templateForm.type,
+        amount: parseFloat(templateForm.amount),
+        assetId: templateForm.assetId || null,
+        liabilityId: templateForm.liabilityId || null,
+        description: templateForm.description || undefined,
+      };
+
+      if (editingTemplate) {
+        await updateTransactionTemplate(user.userId, editingTemplate.templateId, payload);
+        toast.success('Plantilla actualizada');
+      } else {
+        await createTransactionTemplate(user.userId, payload);
+        toast.success('Plantilla creada');
+      }
+
+      setTemplateDialogOpen(false);
+      setEditingTemplate(null);
+      setTemplateForm({
+        name: '',
+        categoryId: null,
+        categoryName: '',
+        type: 'expense',
+        amount: '',
+        assetId: primaryAssetId,
+        liabilityId: null,
+        description: '',
+      });
+      fetchMetadata();
+    } catch (error: any) {
+      console.error('Error saving template:', error);
+      toast.error(error.response?.data?.message || 'Error al guardar la plantilla');
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!user?.userId || !templateToDelete) return;
+
+    try {
+      await deleteTransactionTemplate(user.userId, templateToDelete.templateId);
+      toast.success('Plantilla eliminada');
+      setDeleteTemplateDialogOpen(false);
+      setTemplateToDelete(null);
+      fetchMetadata();
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      toast.error('Error al eliminar la plantilla');
+    }
+  };
+
+  const handleApplyTemplate = (template: TransactionTemplate) => {
+    const newLocalId = `new-${Date.now()}-${Math.random()}`;
+    const lastDate = transactions.length > 0 
+      ? [...transactions].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())[0].transactionDate
+      : defaultStartDate;
+    
+    setRows(prev => [
+      ...prev,
+      {
+        localId: newLocalId,
+        isNew: true,
+        type: template.type,
+        categoryId: template.categoryId || undefined,
+        categoryName: template.categoryName || undefined,
+        assetId: template.assetId || undefined,
+        liabilityId: template.liabilityId || undefined,
+        transactionDate: lastDate,
+        description: template.description || '',
+        amount: template.amount,
+      } as Row,
+    ]);
+    setQuickAdjustValues(prev => ({
+      ...prev,
+      [newLocalId]: ['']
+    }));
+    toast.success(`Plantilla "${template.name}" aplicada`);
+  };
+
+  const handleCreateTemplateFromRow = (row: Row) => {
+    setTemplateForm({
+      name: `${row.categoryName || categories.find(c => c.categoryId === row.categoryId)?.name || 'Transacción'} - ${row.description || 'Sin descripción'}`,
+      categoryId: row.categoryId || null,
+      categoryName: row.categoryName || undefined,
+      type: row.type || 'expense',
+      amount: row.amount.toString(),
+      assetId: row.assetId || null,
+      liabilityId: row.liabilityId || null,
+      description: row.description || '',
+    });
+    setEditingTemplate(null);
+    setTemplateDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -1165,6 +1381,15 @@ const Transactions: React.FC = () => {
                     Calendario
                   </Button>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenTemplateDialog()}
+                  title="Gestionar plantillas"
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Plantillas
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -2382,6 +2607,15 @@ const Transactions: React.FC = () => {
                                   </>
                                 ) : (
                                   <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleCreateTemplateFromRow(r)}
+                                      className="h-7 w-7 p-0 hover:bg-blue-50 hover:text-blue-600"
+                                      title="Crear plantilla desde esta transacción"
+                                    >
+                                      <FileText className="h-3 w-3" />
+                                    </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"

@@ -7,9 +7,10 @@ import {
   getLiabilities,
   getTransactions,
   getCategories,
-  getAssetTypes
+  getAssetTypes,
+  getBudgetStatus
 } from '@/services/api';
-import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType, Category } from '@/types/api';
+import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType, Category, BudgetStatus } from '@/types/api';
 import { calculateCashReconciliation, calculateCashReconciliationRange, isCheckingAccount } from '@/lib/cashReconciliation';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
@@ -58,8 +59,9 @@ const Dashboard: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [assetTypes, setAssetTypes] = useState<AssetType[]>([]);
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
     // Rango por defecto: mes actual
@@ -164,7 +166,8 @@ const Dashboard: React.FC = () => {
         liabilitiesData,
         txsData,
         catsData,
-        assetTypesData
+        assetTypesData,
+        budgetStatusData
       ] = await Promise.all([
         getDashboard(user.userId, startDate, endDate),
         getDashboardSummary(user.userId, 'year'),
@@ -173,7 +176,8 @@ const Dashboard: React.FC = () => {
         getLiabilities(user.userId),
         getTransactions(user.userId, startDate, endDate),
         getCategories(user.userId),
-        getAssetTypes()
+        getAssetTypes(),
+        getBudgetStatus(user.userId, startDate, endDate)
       ]);
 
       setMetrics(metricsData);
@@ -182,6 +186,7 @@ const Dashboard: React.FC = () => {
       setTransactions(txsData);
       setCategories(catsData);
       setAssetTypes(assetTypesData);
+      setBudgetStatus(budgetStatusData || []);
 
       // Inicializar seleccion de series
       const initAssets: Record<string, boolean> = {};
@@ -1042,6 +1047,76 @@ const Dashboard: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Alertas de Presupuesto */}
+        {budgetStatus.length > 0 && (
+          <Card className="border-yellow-200 bg-gradient-to-br from-yellow-50/50 to-background">
+            <CardHeader>
+              <CardTitle className="text-xl sm:text-2xl flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600" />
+                Alertas de Presupuesto
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {budgetStatus
+                  .filter(bs => bs.isExceeded || bs.percentageUsed >= 80)
+                  .sort((a, b) => b.percentageUsed - a.percentageUsed)
+                  .map(bs => (
+                    <div
+                      key={bs.budgetId}
+                      className={`p-3 rounded-lg border ${
+                        bs.isExceeded
+                          ? 'bg-red-50 border-red-200'
+                          : 'bg-yellow-50 border-yellow-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium">{bs.categoryName}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-full transition-all ${
+                                  bs.isExceeded
+                                    ? 'bg-red-500'
+                                    : bs.percentageUsed >= 80
+                                    ? 'bg-yellow-500'
+                                    : 'bg-green-500'
+                                }`}
+                                style={{ width: `${Math.min(bs.percentageUsed, 100)}%` }}
+                              />
+                            </div>
+                            <span className={`text-sm font-medium ${
+                              bs.isExceeded ? 'text-red-700' : 'text-yellow-700'
+                            }`}>
+                              {Math.round(bs.percentageUsed)}%
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatCurrency(bs.spentAmount)} / {formatCurrency(bs.budgetAmount)}
+                            {bs.isExceeded && (
+                              <span className="text-red-600 font-medium ml-2">
+                                (Excedido por {formatCurrency(Math.abs(bs.remainingAmount))})
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        {bs.isExceeded && (
+                          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                {budgetStatus.filter(bs => bs.isExceeded || bs.percentageUsed >= 80).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No hay alertas de presupuesto en este período
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 1) Líquido */}
         <h3 className="text-base font-semibold text-muted-foreground">Líquido</h3>

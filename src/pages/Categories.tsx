@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { getCategories, createCategory, updateCategory, deleteCategory, reassignCategoryTransactions, getTransactions } from '@/services/api';
-import type { Category } from '@/types/api';
+import { getCategories, createCategory, updateCategory, deleteCategory, reassignCategoryTransactions, getTransactions, getBudgets, getBudgetStatus, createBudget, updateBudget, deleteBudget } from '@/services/api';
+import type { Category, Budget, BudgetStatus } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,9 +32,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { FolderOpen, FolderPlus, Edit2, Trash2, Plus, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import { FolderOpen, FolderPlus, Edit2, Trash2, Plus, ChevronDown, ChevronRight, Eye, DollarSign, AlertCircle, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 
 interface CategoryTree extends Category {
   children: CategoryTree[];
@@ -63,11 +63,39 @@ const Categories: React.FC = () => {
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
   const [reassignToCategoryId, setReassignToCategoryId] = useState<number | null>(null);
   const [transactionCount, setTransactionCount] = useState(0);
+  
+  // Budget states
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus[]>([]);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [selectedCategoryForBudget, setSelectedCategoryForBudget] = useState<Category | null>(null);
+  const [budgetForm, setBudgetForm] = useState<{
+    amount: string;
+    period: 'monthly' | 'yearly';
+    startDate: string;
+    endDate: string;
+  }>({
+    amount: '',
+    period: 'monthly',
+    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    endDate: '',
+  });
+  const [deleteBudgetDialogOpen, setDeleteBudgetDialogOpen] = useState(false);
+  const [budgetToDelete, setBudgetToDelete] = useState<Budget | null>(null);
 
   useEffect(() => {
     fetchCategories();
     fetchTransactions();
+    fetchBudgets();
+    fetchBudgetStatus();
   }, [user]);
+
+  useEffect(() => {
+    if (user?.userId) {
+      fetchBudgetStatus();
+    }
+  }, [user, categories]);
 
   const fetchTransactions = async () => {
     if (!user?.userId) return;
@@ -76,6 +104,29 @@ const Categories: React.FC = () => {
       setTransactions(data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const fetchBudgets = async () => {
+    if (!user?.userId) return;
+    try {
+      const data = await getBudgets(user.userId);
+      setBudgets(data);
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+    }
+  };
+
+  const fetchBudgetStatus = async () => {
+    if (!user?.userId) return;
+    try {
+      const today = new Date();
+      const start = format(startOfMonth(today), 'yyyy-MM-dd');
+      const end = format(endOfMonth(today), 'yyyy-MM-dd');
+      const data = await getBudgetStatus(user.userId, start, end);
+      setBudgetStatus(data);
+    } catch (error) {
+      console.error('Error fetching budget status:', error);
     }
   };
 
@@ -239,10 +290,100 @@ const Categories: React.FC = () => {
     }
   };
 
+  // Budget handlers
+  const handleOpenBudgetDialog = (category: Category, budget?: Budget) => {
+    setSelectedCategoryForBudget(category);
+    if (budget) {
+      setEditingBudget(budget);
+      setBudgetForm({
+        amount: budget.amount.toString(),
+        period: budget.period,
+        startDate: budget.startDate || format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        endDate: budget.endDate || '',
+      });
+    } else {
+      setEditingBudget(null);
+      setBudgetForm({
+        amount: '',
+        period: 'monthly',
+        startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        endDate: '',
+      });
+    }
+    setBudgetDialogOpen(true);
+  };
+
+  const handleSaveBudget = async () => {
+    if (!user?.userId || !selectedCategoryForBudget) return;
+    if (!budgetForm.amount || parseFloat(budgetForm.amount) <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
+
+    try {
+      const payload = {
+        categoryId: selectedCategoryForBudget.categoryId,
+        amount: parseFloat(budgetForm.amount),
+        period: budgetForm.period,
+        startDate: budgetForm.startDate || undefined,
+        endDate: budgetForm.endDate || undefined,
+      };
+
+      if (editingBudget) {
+        await updateBudget(user.userId, editingBudget.budgetId, payload);
+        toast.success('Presupuesto actualizado');
+      } else {
+        await createBudget(user.userId, payload);
+        toast.success('Presupuesto creado');
+      }
+
+      setBudgetDialogOpen(false);
+      setEditingBudget(null);
+      setSelectedCategoryForBudget(null);
+      setBudgetForm({
+        amount: '',
+        period: 'monthly',
+        startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        endDate: '',
+      });
+      fetchBudgets();
+      fetchBudgetStatus();
+    } catch (error: any) {
+      console.error('Error saving budget:', error);
+      toast.error(error.response?.data?.message || 'Error al guardar el presupuesto');
+    }
+  };
+
+  const handleDeleteBudget = async () => {
+    if (!user?.userId || !budgetToDelete) return;
+
+    try {
+      await deleteBudget(user.userId, budgetToDelete.budgetId);
+      toast.success('Presupuesto eliminado');
+      setDeleteBudgetDialogOpen(false);
+      setBudgetToDelete(null);
+      fetchBudgets();
+      fetchBudgetStatus();
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+      toast.error('Error al eliminar el presupuesto');
+    }
+  };
+
+  const getBudgetForCategory = (categoryId: number): Budget | undefined => {
+    return budgets.find(b => b.categoryId === categoryId && b.period === 'monthly');
+  };
+
+  const getBudgetStatusForCategory = (categoryId: number): BudgetStatus | undefined => {
+    return budgetStatus.find(bs => bs.categoryId === categoryId);
+  };
+
   const renderCategoryNode = (node: CategoryTree, level: number = 0) => {
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedCategories.has(node.categoryId);
     const indent = level * 24;
+    const budget = getBudgetForCategory(node.categoryId);
+    const budgetStatus = getBudgetStatusForCategory(node.categoryId);
 
     return (
       <div key={node.categoryId} className="mb-1">
@@ -275,6 +416,31 @@ const Categories: React.FC = () => {
           >
             {node.name}
           </button>
+          
+          {/* Budget Status Badge */}
+          {budgetStatus && (
+            <div className="flex items-center gap-2">
+              {budgetStatus.isExceeded ? (
+                <Badge variant="destructive" className="flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {Math.round(budgetStatus.percentageUsed)}%
+                </Badge>
+              ) : budgetStatus.percentageUsed >= 80 ? (
+                <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3" />
+                  {Math.round(budgetStatus.percentageUsed)}%
+                </Badge>
+              ) : budgetStatus.percentageUsed >= 50 ? (
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                  {Math.round(budgetStatus.percentageUsed)}%
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  {Math.round(budgetStatus.percentageUsed)}%
+                </Badge>
+              )}
+            </div>
+          )}
           
           <span className="text-sm text-muted-foreground hidden md:block">
             {(() => {
@@ -310,6 +476,15 @@ const Categories: React.FC = () => {
               onClick={() => navigate(`/categories/${node.categoryId}`)}
             >
               <Eye className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => handleOpenBudgetDialog(node, budget)}
+              title={budget ? 'Editar presupuesto' : 'Crear presupuesto'}
+            >
+              <DollarSign className="h-3 w-3" />
             </Button>
             <Button
               variant="ghost"
@@ -584,6 +759,134 @@ const Categories: React.FC = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Budget Dialog */}
+        <Dialog open={budgetDialogOpen} onOpenChange={setBudgetDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingBudget ? 'Editar Presupuesto' : 'Crear Presupuesto'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Categoría</Label>
+                <Input
+                  value={selectedCategoryForBudget?.name || ''}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              <div>
+                <Label htmlFor="budget-amount">Monto *</Label>
+                <Input
+                  id="budget-amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={budgetForm.amount}
+                  onChange={(e) => setBudgetForm({ ...budgetForm, amount: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="budget-period">Período *</Label>
+                <Select
+                  value={budgetForm.period}
+                  onValueChange={(value: 'monthly' | 'yearly') => setBudgetForm({ ...budgetForm, period: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                    <SelectItem value="yearly">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="budget-start-date">Fecha de inicio</Label>
+                <Input
+                  id="budget-start-date"
+                  type="date"
+                  value={budgetForm.startDate}
+                  onChange={(e) => setBudgetForm({ ...budgetForm, startDate: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si no se especifica, se usará el primer día del {budgetForm.period === 'monthly' ? 'mes' : 'año'} actual
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="budget-end-date">Fecha de fin (opcional)</Label>
+                <Input
+                  id="budget-end-date"
+                  type="date"
+                  value={budgetForm.endDate}
+                  onChange={(e) => setBudgetForm({ ...budgetForm, endDate: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Dejar vacío para presupuesto indefinido
+                </p>
+              </div>
+              {editingBudget && (
+                <Button
+                  variant="outline"
+                  className="w-full text-destructive hover:text-destructive"
+                  onClick={() => {
+                    setBudgetDialogOpen(false);
+                    setBudgetToDelete(editingBudget);
+                    setDeleteBudgetDialogOpen(true);
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar Presupuesto
+                </Button>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBudgetDialogOpen(false);
+                  setEditingBudget(null);
+                  setSelectedCategoryForBudget(null);
+                  setBudgetForm({
+                    amount: '',
+                    period: 'monthly',
+                    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+                    endDate: '',
+                  });
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveBudget}>
+                {editingBudget ? 'Actualizar' : 'Crear'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Budget Dialog */}
+        <AlertDialog open={deleteBudgetDialogOpen} onOpenChange={setDeleteBudgetDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar presupuesto?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción eliminará el presupuesto de la categoría "{budgetToDelete && categories.find(c => c.categoryId === budgetToDelete.categoryId)?.name}".
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setBudgetToDelete(null)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteBudget} className="bg-destructive hover:bg-destructive/90">
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );
