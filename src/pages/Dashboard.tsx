@@ -301,14 +301,29 @@ const Dashboard: React.FC = () => {
   const renderSortedLegend = (data: { name: string; value: number; color?: string }[], total: number) => {
     const items = [...(data || [])].sort((a, b) => b.value - a.value);
     return (
-      <div style={{ width: 180, maxHeight: 220, overflowY: 'auto', fontSize: 12 }}>
-        {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2" style={{ marginBottom: 8 }}>
-            <span style={{ width: 12, height: 12, background: it.color ?? COLORS[idx % COLORS.length], display: 'inline-block', borderRadius: 3 }} />
-            <div className="truncate text-sm" style={{ maxWidth: 100 }}>{it.name}</div>
-            <div className="ml-auto text-xs text-muted-foreground">{Math.round((it.value / (total || 1)) * 100)}%</div>
-          </div>
-        ))}
+      <div className="w-full mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {items.map((it, idx) => (
+            <div key={idx} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
+              <span 
+                style={{ 
+                  width: 14, 
+                  height: 14, 
+                  background: it.color ?? COLORS[idx % COLORS.length], 
+                  display: 'inline-block', 
+                  borderRadius: 3,
+                  flexShrink: 0
+                }} 
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{it.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatCurrency(it.value)} ({Math.round((it.value / (total || 1)) * 100)}%)
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
@@ -711,12 +726,12 @@ const Dashboard: React.FC = () => {
           {/* Ingresos por categoría (Top N) */}
           <Card>
             <CardHeader><CardTitle>Ingresos por categoría (Top {TOP_N})</CardTitle></CardHeader>
-            <CardContent className="flex items-center justify-center pt-6">
+            <CardContent>
               {incomeByCategoryTop.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No hay ingresos en el periodo</div>
+                <div className="text-sm text-muted-foreground text-center py-8">No hay ingresos en el periodo</div>
               ) : (
-                <div className="flex items-center gap-4 w-full" style={{ height: 220 }}>
-                  <div style={{ flex: '0 0 60%', minWidth: 0 }}>
+                <>
+                  <div className="flex items-center justify-center pt-6">
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie data={incomeByCategoryTop} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={34} outerRadius={68} label={false} labelLine={false}>
@@ -726,10 +741,8 @@ const Dashboard: React.FC = () => {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  <div style={{ flex: '0 0 40%', display: 'flex', justifyContent: 'flex-start' }}>
-                    {renderSortedLegend(incomeByCategoryTop, incomeTotal)}
-                  </div>
-                </div>
+                  {renderSortedLegend(incomeByCategoryTop, incomeTotal)}
+                </>
               )}
             </CardContent>
           </Card>
@@ -737,12 +750,12 @@ const Dashboard: React.FC = () => {
           {/* Gastos por categoría (Top N) */}
           <Card>
             <CardHeader><CardTitle>Gastos por categoría (Top {TOP_N})</CardTitle></CardHeader>
-            <CardContent className="flex items-center justify-center pt-6">
+            <CardContent>
               {expenseByCategoryTop.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No hay gastos en el periodo</div>
+                <div className="text-sm text-muted-foreground text-center py-8">No hay gastos en el periodo</div>
               ) : (
-                <div className="flex items-center gap-4 w-full" style={{ height: 220 }}>
-                  <div style={{ flex: '0 0 60%', minWidth: 0 }}>
+                <>
+                  <div className="flex items-center justify-center pt-6">
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie data={expenseByCategoryTop} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={34} outerRadius={68} label={false} labelLine={false}>
@@ -752,10 +765,8 @@ const Dashboard: React.FC = () => {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  <div style={{ flex: '0 0 40%', display: 'flex', justifyContent: 'flex-start' }}>
-                    {renderSortedLegend(expenseByCategoryTop, expenseTotal)}
-                  </div>
-                </div>
+                  {renderSortedLegend(expenseByCategoryTop, expenseTotal)}
+                </>
               )}
             </CardContent>
           </Card>
