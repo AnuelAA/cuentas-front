@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
 import { toast } from 'sonner';
@@ -99,6 +99,7 @@ const Transactions: React.FC = () => {
   const [quickMode, setQuickMode] = useState(false); // Modo rápido de entrada
   const [quickModeCount, setQuickModeCount] = useState(0); // Contador de transacciones añadidas en modo rápido
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'amount' | 'category'; direction: 'asc' | 'desc' } | null>(null); // Ordenamiento
+  const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -545,31 +546,101 @@ const Transactions: React.FC = () => {
 
   // loading guard se mueve más abajo para no romper el orden de hooks
 
-  // Agrupar ingresos por categoría
+  // Helper: obtener categoría padre o la misma si no tiene padre
+  const getParentCategory = (categoryId?: number): Category | null => {
+    if (!categoryId) return null;
+    const cat = categories.find(c => c.categoryId === categoryId);
+    if (!cat || !cat.parentCategoryId) return cat;
+    return categories.find(c => c.categoryId === cat.parentCategoryId) || cat;
+  };
+
+  // Helper: obtener todas las subcategorías de una categoría padre
+  const getSubcategories = (parentId: number): Category[] => {
+    return categories.filter(c => c.parentCategoryId === parentId);
+  };
+
+  // Filtrar transacciones según búsqueda avanzada
+  const filteredRows = useMemo(() => {
+    let filtered = rows;
+
+    // Filtro por texto (descripción, categoría)
+    if (searchText.trim()) {
+      const searchLower = searchText.toLowerCase();
+      filtered = filtered.filter(row => {
+        const description = (row.description || '').toLowerCase();
+        const categoryName = (row.categoryName || 
+          categories.find(c => c.categoryId === row.categoryId)?.name || '').toLowerCase();
+        return description.includes(searchLower) || categoryName.includes(searchLower);
+      });
+    }
+
+    // Filtro por tipo
+    if (searchType !== 'all') {
+      filtered = filtered.filter(row => row.type === searchType);
+    }
+
+    // Filtro por categorías seleccionadas
+    if (searchSelectedCategories.length > 0) {
+      filtered = filtered.filter(row => 
+        row.categoryId && searchSelectedCategories.includes(row.categoryId)
+      );
+    }
+
+    // Filtro por rango de importes
+    if (searchMinAmount !== null) {
+      filtered = filtered.filter(row => (row.amount || 0) >= searchMinAmount);
+    }
+    if (searchMaxAmount !== null) {
+      filtered = filtered.filter(row => (row.amount || 0) <= searchMaxAmount);
+    }
+
+    return filtered;
+  }, [rows, searchText, searchType, searchSelectedCategories, searchMinAmount, searchMaxAmount, categories]);
+
+  // Agrupar ingresos por categoría (usando filteredRows)
   const incomeByCategory = useMemo(() => {
-    if (!rows || rows.length === 0) return [];
+    if (!filteredRows || filteredRows.length === 0) return [];
     
     try {
-      const incomeRows = rows.filter(r => r.type === 'income');
+      const incomeRows = filteredRows.filter(r => r.type === 'income');
       const grouped: Record<string, { 
         categoryId?: number; 
         categoryName: string; 
         rows: Row[];
         total: number;
+        parentCategoryId?: number | null;
       }> = {};
       
       incomeRows.forEach(row => {
-        const categoryName = row.categoryName || 
-                            (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
-                            'Sin categoría';
-        const key = `${row.categoryId || 'none'}-${categoryName.toLowerCase()}`;
+        let categoryId = row.categoryId;
+        let categoryName = row.categoryName || 
+                          (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
+                          'Sin categoría';
+        let parentCategoryId: number | null | undefined = undefined;
+
+        if (groupByParent && categoryId) {
+          const parent = getParentCategory(categoryId);
+          if (parent && parent.categoryId !== categoryId) {
+            categoryId = parent.categoryId;
+            categoryName = parent.name;
+            parentCategoryId = parent.parentCategoryId;
+          } else if (parent) {
+            parentCategoryId = parent.parentCategoryId;
+          }
+        } else if (categoryId) {
+          const cat = categories.find(c => c.categoryId === categoryId);
+          parentCategoryId = cat?.parentCategoryId;
+        }
+
+        const key = `${categoryId || 'none'}-${categoryName.toLowerCase()}`;
         
         if (!grouped[key]) {
           grouped[key] = {
-            categoryId: row.categoryId,
+            categoryId,
             categoryName,
             rows: [],
             total: 0,
+            parentCategoryId,
           };
         }
         
@@ -584,33 +655,52 @@ const Transactions: React.FC = () => {
       console.error('Error grouping income by category:', error);
       return [];
     }
-  }, [rows, categories]);
+  }, [filteredRows, categories, groupByParent]);
 
-  // Agrupar gastos por categoría
+  // Agrupar gastos por categoría (usando filteredRows)
   const expenseByCategory = useMemo(() => {
-    if (!rows || rows.length === 0) return [];
+    if (!filteredRows || filteredRows.length === 0) return [];
     
     try {
-      const expenseRows = rows.filter(r => r.type === 'expense');
+      const expenseRows = filteredRows.filter(r => r.type === 'expense');
       const grouped: Record<string, { 
         categoryId?: number; 
         categoryName: string; 
         rows: Row[];
         total: number;
+        parentCategoryId?: number | null;
       }> = {};
       
       expenseRows.forEach(row => {
-        const categoryName = row.categoryName || 
-                            (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
-                            'Sin categoría';
-        const key = `${row.categoryId || 'none'}-${categoryName.toLowerCase()}`;
+        let categoryId = row.categoryId;
+        let categoryName = row.categoryName || 
+                          (categories && categories.length > 0 ? categories.find(c => c.categoryId === row.categoryId)?.name : null) || 
+                          'Sin categoría';
+        let parentCategoryId: number | null | undefined = undefined;
+
+        if (groupByParent && categoryId) {
+          const parent = getParentCategory(categoryId);
+          if (parent && parent.categoryId !== categoryId) {
+            categoryId = parent.categoryId;
+            categoryName = parent.name;
+            parentCategoryId = parent.parentCategoryId;
+          } else if (parent) {
+            parentCategoryId = parent.parentCategoryId;
+          }
+        } else if (categoryId) {
+          const cat = categories.find(c => c.categoryId === categoryId);
+          parentCategoryId = cat?.parentCategoryId;
+        }
+
+        const key = `${categoryId || 'none'}-${categoryName.toLowerCase()}`;
         
         if (!grouped[key]) {
           grouped[key] = {
-            categoryId: row.categoryId,
+            categoryId,
             categoryName,
             rows: [],
             total: 0,
+            parentCategoryId,
           };
         }
         
@@ -625,10 +715,10 @@ const Transactions: React.FC = () => {
       console.error('Error grouping expenses by category:', error);
       return [];
     }
-  }, [rows, categories]);
+  }, [filteredRows, categories, groupByParent]);
   
-  const incomeRows = rows.filter(r => r.type === 'income');
-  const expenseRows = rows.filter(r => r.type === 'expense');
+  const incomeRows = filteredRows.filter(r => r.type === 'income');
+  const expenseRows = filteredRows.filter(r => r.type === 'expense');
 
   const totalIncome = incomeRows.reduce((sum, r) => sum + (r.amount || 0), 0);
   const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
@@ -839,6 +929,8 @@ const Transactions: React.FC = () => {
   // Atajos de teclado - temporalmente deshabilitados para evitar errores de React
   // TODO: Reimplementar de forma más segura usando useRef o eliminando dependencias problemáticas
 
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+
   return (
     <Layout>
       <div className="space-y-6 max-w-7xl mx-auto px-2 sm:px-4">
@@ -872,17 +964,131 @@ const Transactions: React.FC = () => {
                   />
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportToCSV}
-                title="Exportar a CSV (Ctrl+E)"
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Exportar CSV
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                  title="Búsqueda avanzada"
+                >
+                  <Filter className="h-4 w-4 mr-1" />
+                  Filtros
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportToCSV}
+                  title="Exportar a CSV"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Exportar CSV
+                </Button>
+              </div>
             </div>
           </div>
+
+          {/* Búsqueda avanzada */}
+          {showAdvancedSearch && (
+            <Card className="border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  Búsqueda Avanzada
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <Label htmlFor="search-text">Buscar texto</Label>
+                    <Input
+                      id="search-text"
+                      placeholder="Descripción, categoría..."
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="search-type">Tipo</Label>
+                    <Select value={searchType} onValueChange={(v: 'all' | 'income' | 'expense') => setSearchType(v)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="income">Ingresos</SelectItem>
+                        <SelectItem value="expense">Gastos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="search-min">Importe mínimo</Label>
+                    <Input
+                      id="search-min"
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={searchMinAmount !== null ? searchMinAmount : ''}
+                      onChange={(e) => setSearchMinAmount(e.target.value ? parseFloat(e.target.value) : null)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="search-max">Importe máximo</Label>
+                    <Input
+                      id="search-max"
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={searchMaxAmount !== null ? searchMaxAmount : ''}
+                      onChange={(e) => setSearchMaxAmount(e.target.value ? parseFloat(e.target.value) : null)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Label>Categorías</Label>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {categories.map(cat => (
+                      <Button
+                        key={cat.categoryId}
+                        variant={searchSelectedCategories.includes(cat.categoryId) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setSearchSelectedCategories(prev =>
+                            prev.includes(cat.categoryId)
+                              ? prev.filter(id => id !== cat.categoryId)
+                              : [...prev, cat.categoryId]
+                          );
+                        }}
+                        className="text-xs"
+                      >
+                        {cat.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchText('');
+                      setSearchType('all');
+                      setSearchMinAmount(null);
+                      setSearchMaxAmount(null);
+                      setSearchSelectedCategories([]);
+                    }}
+                  >
+                    Limpiar filtros
+                  </Button>
+                  <div className="text-sm text-muted-foreground flex items-center">
+                    {filteredRows.length} de {rows.length} transacciones
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Estadísticas rápidas */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1212,6 +1418,14 @@ const Transactions: React.FC = () => {
                   <p className="text-sm text-success/80 mt-0.5">{incomeRows.length} {incomeRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGroupByParent(!groupByParent)}
+                className="text-xs"
+              >
+                {groupByParent ? 'Ver individuales' : 'Agrupar por padre'}
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
@@ -1580,6 +1794,14 @@ const Transactions: React.FC = () => {
                   <p className="text-sm text-destructive/80 mt-0.5">{expenseRows.length} {expenseRows.length === 1 ? 'transacción' : 'transacciones'}</p>
                 </div>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGroupByParent(!groupByParent)}
+                className="text-xs"
+              >
+                {groupByParent ? 'Ver individuales' : 'Agrupar por padre'}
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">

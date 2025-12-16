@@ -3,8 +3,9 @@
 Lista de mejoras priorizadas que se implementarán en el frontend, con detalles de implementación para cada una.
 
 **Última actualización**: 
-- ✅ Completadas: Modo rápido de entrada, Exportar CSV, Ordenamiento de transacciones, Exportar gráficos como PNG
+- ✅ Completadas: Modo rápido de entrada, Exportar CSV, Ordenamiento de transacciones, Exportar gráficos como PNG, Agrupación por categoría padre, Búsqueda avanzada
 - ⚠️ **IMPORTANTE**: Se requiere instalar `html2canvas` en el servidor de producción: `npm install html2canvas`
+- ⚠️ Atajos de teclado temporalmente deshabilitados (problemas con dependencias de React hooks)
 
 ---
 
@@ -242,9 +243,11 @@ npm install html2canvas
 ---
 
 ### 12. Atajos de teclado
-**Estado**: Pendiente  
+**Estado**: ⚠️ Temporalmente Deshabilitado  
 **Prioridad**: Media  
 **Complejidad**: Media
+
+**Nota**: Los atajos de teclado fueron temporalmente deshabilitados debido a problemas con dependencias de React hooks. Se reimplementarán de forma más segura en el futuro.
 
 **Qué hacer**:
 - **Enter**: Guardar transacción/formulario
@@ -315,49 +318,53 @@ npm install html2canvas
 ---
 
 ### 15. Agrupación por categoría padre
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Media  
 **Complejidad**: Baja
 
 **Qué hacer**:
-- Toggle "Agrupar por categoría padre" en página de Transacciones
-- Cuando activo, agrupar transacciones por categoría padre
-- Mostrar totales por grupo
-- Expandir/colapsar grupos
-- Mantener filtros y búsqueda funcionando
+- Toggle "Agrupar por categoría padre" en página de Transacciones ✅
+- Cuando activo, agrupar transacciones por categoría padre ✅
+- Mostrar totales por grupo ✅
+- Expandir/colapsar grupos (pendiente - se puede añadir después)
+- Mantener filtros y búsqueda funcionando ✅
 
 **Implementación**:
-- Similar a implementación en Dashboard
-- Agrupar transacciones usando `parentCategoryId`
-- Componente `GroupedTransactionsList`
-- Integrar con tabla existente o crear vista alternativa
+- ✅ Similar a implementación en Dashboard
+- ✅ Agrupar transacciones usando `parentCategoryId`
+- ✅ Botón toggle en header de Ingresos y Gastos
+- ✅ Funciones helper `getParentCategory` y `getSubcategories`
+- ⚠️ Pendiente: Expandir/colapsar subcategorías (mejora futura)
 
 ---
 
 ### 16. Búsqueda avanzada
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
 **Qué hacer**:
 - Panel de búsqueda avanzada con múltiples filtros:
-  - Texto libre (descripción, categoría)
-  - Rango de fechas
-  - Rango de importes
-  - Categorías (múltiple selección)
-  - Activos/Pasivos
-  - Tipo (ingreso/gasto)
-- Guardar búsquedas favoritas
-- Aplicar filtros en tiempo real
-- Mostrar contador de resultados
+  - Texto libre (descripción, categoría) ✅
+  - Rango de fechas (ya existe en el header) ✅
+  - Rango de importes ✅
+  - Categorías (múltiple selección) ✅
+  - Activos/Pasivos (pendiente - se puede añadir después)
+  - Tipo (ingreso/gasto) ✅
+- Guardar búsquedas favoritas (pendiente)
+- Aplicar filtros en tiempo real ✅
+- Mostrar contador de resultados ✅
 
 **Implementación**:
-- Componente `AdvancedSearch` con formulario
-- Estados para cada filtro
-- Filtrar `transactions` array en frontend
-- Para grandes volúmenes, usar endpoint de búsqueda del backend
+- ✅ Panel de búsqueda avanzada con botón toggle
+- ✅ Estados para cada filtro (texto, tipo, importes, categorías)
+- ✅ Filtrar `rows` array en frontend usando `useMemo`
+- ✅ Contador de resultados: "X de Y transacciones"
+- ✅ Botón "Limpiar filtros"
+- ⚠️ Pendiente: Guardar búsquedas favoritas (requiere backend)
+- ⚠️ Pendiente: Filtro por activos/pasivos (se puede añadir fácilmente)
 
-**Requiere Backend**: ⚠️ (recomendado para performance - ver BACKEND_REQUIREMENTS.txt sección 4)
+**Requiere Backend**: ⚠️ (solo para guardar búsquedas favoritas - ver BACKEND_REQUIREMENTS.txt sección 4)
 
 ---
 
@@ -892,8 +899,8 @@ npm install html2canvas
 5. ✅ Gráfico de evolución de patrimonio neto
 6. Vista de comparación
 7. Plantillas de transacciones recurrentes
-8. ✅ Modo rápido de entrada (con atajos de teclado)
-9. Búsqueda avanzada
+8. ✅ Modo rápido de entrada (botón funcional, atajos temporalmente deshabilitados)
+9. ✅ Búsqueda avanzada (texto, tipo, importes, categorías)
 10. ✅ Vista de tabla mejorada (ordenamiento, exportar CSV)
 11. Alertas de presupuesto
 12. Estadísticas por categoría
@@ -909,9 +916,9 @@ npm install html2canvas
 15. Widgets personalizables
 16. Heatmap de gastos
 17. Filtro por activo/pasivo
-18. Atajos de teclado
+18. ⚠️ Atajos de teclado (temporalmente deshabilitados)
 19. Vista de calendario
-20. Agrupación por categoría padre
+20. ✅ Agrupación por categoría padre
 21. Análisis de patrones
 22. Vista de cartera
 23. Comparación de activos
