@@ -1,0 +1,689 @@
+================================================================================
+REQUERIMIENTOS PARA EL BACKEND - Joseliyo App
+================================================================================
+
+Este documento lista los requerimientos del backend necesarios para las mejoras
+priorizadas del frontend.
+
+Fecha: 2024
+Versión: 2.0 - Mejoras Priorizadas
+
+================================================================================
+1. CONFIGURACIÓN DE DASHBOARD Y PREFERENCIAS DE USUARIO
+================================================================================
+
+Necesario para: Widgets personalizables (#3), Dashboard personalizable (#38)
+
+Endpoint: GET /api/users/{userId}/dashboard-config
+Descripción: Obtener configuración del dashboard del usuario
+
+Respuesta esperada:
+  {
+    "widgetOrder": string[], // IDs de widgets en orden
+    "visibleWidgets": string[], // IDs de widgets visibles
+    "layout": "default" | "compact" | "detailed"
+  }
+
+Endpoint: PUT /api/users/{userId}/dashboard-config
+Body: {
+  "widgetOrder": string[],
+  "visibleWidgets": string[],
+  "layout": "default" | "compact" | "detailed"
+}
+Descripción: Guardar configuración del dashboard
+
+Endpoint: GET /api/users/{userId}/preferences
+Descripción: Obtener todas las preferencias del usuario
+
+Respuesta esperada:
+  {
+    "theme": "light" | "dark" | "system",
+    "fontSize": "small" | "normal" | "large" | "xlarge",
+    "dateFormat": "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD",
+    "currency": "EUR" | "USD" | etc.,
+    "language": "es" | "en"
+  }
+
+Endpoint: PUT /api/users/{userId}/preferences
+Body: {
+  "theme"?: "light" | "dark" | "system",
+  "fontSize"?: "small" | "normal" | "large" | "xlarge",
+  "dateFormat"?: string,
+  "currency"?: string,
+  "language"?: string
+}
+Descripción: Actualizar preferencias del usuario
+
+NOTAS:
+- Si no existe configuración, devolver valores por defecto
+- Validar que userId en path corresponda al usuario autenticado
+
+================================================================================
+2. COMPARACIÓN DE PERÍODOS (OPTIMIZACIÓN)
+================================================================================
+
+Necesario para: Vista de comparación (#10)
+
+Endpoint: GET /api/users/{userId}/comparison
+Query params:
+  - period1Start: string (ISO date)
+  - period1End: string (ISO date)
+  - period2Start: string (ISO date)
+  - period2End: string (ISO date)
+  - includeCategories: boolean (default: true)
+  - includeAssets: boolean (default: false)
+
+Descripción: Comparar dos períodos y devolver datos agregados
+
+Respuesta esperada:
+  {
+    "period1": {
+      "startDate": string,
+      "endDate": string,
+      "totalIncome": number,
+      "totalExpenses": number,
+      "balance": number,
+      "byCategory": [
+        {
+          "categoryId": number,
+          "categoryName": string,
+          "income": number,
+          "expenses": number
+        }
+      ]
+    },
+    "period2": {
+      // Misma estructura
+    },
+    "differences": {
+      "income": {
+        "absolute": number,
+        "percentage": number
+      },
+      "expenses": {
+        "absolute": number,
+        "percentage": number
+      },
+      "balance": {
+        "absolute": number,
+        "percentage": number
+      },
+      "byCategory": [
+        {
+          "categoryId": number,
+          "categoryName": string,
+          "difference": number,
+          "percentageChange": number
+        }
+      ]
+    }
+  }
+
+NOTAS:
+- Este endpoint optimiza el cálculo en el backend
+- El frontend puede hacerlo localmente, pero este endpoint es más eficiente
+- Validar que las fechas sean válidas y period1End >= period1Start, etc.
+
+================================================================================
+3. PLANTILLAS DE TRANSACCIONES RECURRENTES
+================================================================================
+
+Necesario para: Plantillas de transacciones recurrentes (#11)
+
+Endpoint: GET /api/users/{userId}/transaction-templates
+Descripción: Obtener todas las plantillas del usuario
+
+Respuesta esperada:
+  [
+    {
+      "templateId": number,
+      "name": string,
+      "categoryId": number,
+      "categoryName": string,
+      "type": "income" | "expense",
+      "amount": number,
+      "assetId": number | null,
+      "assetName": string | null,
+      "description": string | null,
+      "frequency": "none" | "daily" | "weekly" | "monthly" | "yearly" | null,
+      "createdAt": string,
+      "updatedAt": string
+    }
+  ]
+
+Endpoint: POST /api/users/{userId}/transaction-templates
+Body: {
+  "name": string,
+  "categoryId": number,
+  "type": "income" | "expense",
+  "amount": number,
+  "assetId": number | null,
+  "relatedAssetId": number | null,
+  "liabilityId": number | null,
+  "description": string | null,
+  "frequency": "none" | "daily" | "weekly" | "monthly" | "yearly" | null
+}
+Descripción: Crear nueva plantilla
+
+Endpoint: GET /api/users/{userId}/transaction-templates/{templateId}
+Descripción: Obtener plantilla específica
+
+Endpoint: PUT /api/users/{userId}/transaction-templates/{templateId}
+Body: (mismo que POST)
+Descripción: Actualizar plantilla
+
+Endpoint: DELETE /api/users/{userId}/transaction-templates/{templateId}
+Descripción: Eliminar plantilla
+
+Endpoint: POST /api/users/{userId}/transaction-templates/{templateId}/apply
+Body: {
+  "transactionDate": string (ISO date, opcional, default: hoy)
+}
+Descripción: Crear transacción desde plantilla
+
+Respuesta: Transaction creada
+
+NOTAS:
+- Validar que categoryId, assetId, etc. existan y pertenezcan al usuario
+- Si frequency no es null, considerar crear transacciones automáticas (futuro)
+
+================================================================================
+4. BÚSQUEDA AVANZADA DE TRANSACCIONES
+================================================================================
+
+Necesario para: Búsqueda avanzada (#16)
+
+Endpoint: GET /api/users/{userId}/transactions/search
+Query params:
+  - q: string (búsqueda de texto libre en description, category name, etc.)
+  - minAmount: number
+  - maxAmount: number
+  - categoryIds: number[] (separado por comas: "1,2,3")
+  - parentCategoryId: number (buscar en categoría padre y todas sus subcategorías)
+  - assetIds: number[] (separado por comas)
+  - liabilityIds: number[] (separado por comas)
+  - type: "income" | "expense"
+  - startDate: string (ISO date)
+  - endDate: string (ISO date)
+  - sortBy: "date" | "amount" | "category" | "createdAt" (default: "date")
+  - sortOrder: "asc" | "desc" (default: "desc")
+  - page: number (default: 1)
+  - pageSize: number (default: 50, max: 100)
+
+Descripción: Búsqueda avanzada con múltiples filtros combinables
+
+Respuesta esperada:
+  {
+    "data": Transaction[],
+    "pagination": {
+      "page": number,
+      "pageSize": number,
+      "total": number,
+      "totalPages": number,
+      "hasNext": boolean,
+      "hasPrevious": boolean
+    },
+    "filters": {
+      // Echo de los filtros aplicados
+    }
+  }
+
+NOTAS:
+- Todos los filtros son opcionales y pueden combinarse
+- Si parentCategoryId se proporciona, incluir todas las subcategorías recursivamente
+- La búsqueda de texto (q) debe buscar en: description, category.name, asset.name, liability.name
+- Implementar índices en BD para performance
+- Validar que todos los IDs pertenezcan al usuario
+
+Mejora del endpoint existente:
+- Actualizar GET /api/users/{userId}/transactions para aceptar estos mismos query params
+- Mantener compatibilidad con implementación actual
+
+================================================================================
+5. ANÁLISIS DE PATRONES (OPCIONAL - PARA OPTIMIZACIÓN)
+================================================================================
+
+Necesario para: Análisis de patrones (#18)
+
+Endpoint: GET /api/users/{userId}/analytics/patterns
+Query params:
+  - startDate: string (ISO date, opcional)
+  - endDate: string (ISO date, opcional)
+
+Descripción: Detectar patrones en transacciones del usuario
+
+Respuesta esperada:
+  {
+    "spendingByDayOfWeek": [
+      {
+        "day": "monday" | "tuesday" | etc.,
+        "averageAmount": number,
+        "transactionCount": number
+      }
+    ],
+    "spendingByTimeOfDay": [
+      {
+        "hour": number (0-23),
+        "averageAmount": number
+      }
+    ],
+    "topCategories": [
+      {
+        "categoryId": number,
+        "categoryName": string,
+        "totalAmount": number,
+        "averageAmount": number,
+        "transactionCount": number,
+        "trend": "up" | "down" | "stable"
+      }
+    ],
+    "recurringExpenses": [
+      {
+        "categoryId": number,
+        "categoryName": string,
+        "averageMonthly": number,
+        "frequency": "monthly" | "weekly" | etc.
+      }
+    ],
+    "anomalies": [
+      {
+        "type": "unusual_spending" | "missing_transaction" | etc.,
+        "description": string,
+        "date": string,
+        "amount": number
+      }
+    ]
+  }
+
+NOTAS:
+- Este endpoint es opcional, el frontend puede calcularlo localmente
+- Útil para grandes volúmenes de datos
+- Los cálculos pueden ser costosos, considerar caché
+
+================================================================================
+6. PRESUPUESTOS POR CATEGORÍA
+================================================================================
+
+Necesario para: Alertas de presupuesto (#19)
+
+Endpoint: GET /api/users/{userId}/categories/{categoryId}/budget
+Descripción: Obtener presupuesto de una categoría
+
+Respuesta esperada:
+  {
+    "categoryId": number,
+    "categoryName": string,
+    "budgetAmount": number,
+    "period": "month" | "year",
+    "currentSpent": number,
+    "percentageUsed": number,
+    "isOverBudget": boolean,
+    "remaining": number,
+    "createdAt": string,
+    "updatedAt": string
+  }
+
+Si no existe presupuesto, devolver 404 o null.
+
+Endpoint: PUT /api/users/{userId}/categories/{categoryId}/budget
+Body: {
+  "amount": number,
+  "period": "month" | "year"
+}
+Descripción: Establecer o actualizar presupuesto
+
+Endpoint: DELETE /api/users/{userId}/categories/{categoryId}/budget
+Descripción: Eliminar presupuesto
+
+Endpoint: GET /api/users/{userId}/budgets
+Query params:
+  - period: "month" | "year" | "all" (default: "all")
+  - includeExceeded: boolean (default: true)
+
+Descripción: Obtener todos los presupuestos del usuario
+
+Respuesta esperada:
+  [
+    {
+      "categoryId": number,
+      "categoryName": string,
+      "parentCategoryId": number | null,
+      "budgetAmount": number,
+      "period": "month" | "year",
+      "currentSpent": number,
+      "percentageUsed": number,
+      "isOverBudget": boolean,
+      "remaining": number
+    }
+  ]
+
+NOTAS:
+- currentSpent debe calcularse desde transacciones del período actual
+- Para "month": gastos del mes actual
+- Para "year": gastos del año actual
+- isOverBudget: true si currentSpent > budgetAmount
+- percentageUsed: (currentSpent / budgetAmount) * 100
+
+Actualizar modelo Category:
+- Añadir relación opcional con Budget
+
+================================================================================
+7. COLORES PERSONALIZADOS EN CATEGORÍAS
+================================================================================
+
+Necesario para: Colores personalizados (#28)
+
+Actualizar modelo Category para incluir:
+  - color?: string (hex code, ej: "#FF5733")
+  - icon?: string (nombre de icono, ej: "shopping-cart")
+
+Endpoint: PUT /api/users/{userId}/categories/{categoryId}
+Body actualizado:
+  {
+    "name": string,
+    "description": string | null,
+    "parentCategoryId": number | null,
+    "color": string | null,
+    "icon": string | null
+  }
+
+Descripción: Actualizar categoría incluyendo color e icono
+
+Endpoint: GET /api/users/{userId}/categories
+Respuesta: Debe incluir color e icon en cada Category
+
+NOTAS:
+- Validar formato de color (hex code)
+- Validar que icon sea un nombre válido (lista predefinida o validación)
+- Color e icon son opcionales
+
+================================================================================
+8. ESTADÍSTICAS POR CATEGORÍA (OPTIMIZACIÓN)
+================================================================================
+
+Necesario para: Estadísticas por categoría (#29)
+
+Endpoint: GET /api/users/{userId}/categories/{categoryId}/statistics
+Query params:
+  - startDate: string (ISO date, opcional)
+  - endDate: string (ISO date, opcional)
+  - includeSubcategories: boolean (default: false)
+
+Descripción: Obtener estadísticas detalladas de una categoría
+
+Respuesta esperada:
+  {
+    "category": Category,
+    "period": {
+      "startDate": string,
+      "endDate": string
+    },
+    "totals": {
+      "income": number,
+      "expenses": number,
+      "net": number
+    },
+    "transactionCount": number,
+    "averageAmount": number,
+    "minAmount": number,
+    "maxAmount": number,
+    "trend": {
+      "direction": "up" | "down" | "stable",
+      "percentageChange": number,
+      "previousPeriod": {
+        "total": number,
+        "startDate": string,
+        "endDate": string
+      }
+    },
+    "monthlyBreakdown": [
+      {
+        "month": string (YYYY-MM),
+        "income": number,
+        "expenses": number,
+        "transactionCount": number
+      }
+    ],
+    "subcategories": [
+      {
+        "categoryId": number,
+        "categoryName": string,
+        "total": number,
+        "transactionCount": number
+      }
+    ]
+  }
+
+NOTAS:
+- Si includeSubcategories=true, incluir estadísticas de todas las subcategorías
+- trend compara con período anterior de misma duración
+- Este endpoint optimiza cálculos, pero el frontend puede hacerlo localmente
+- Considerar caché para mejorar performance
+
+================================================================================
+9. PREFERENCIAS DE TEMA (OPCIONAL)
+================================================================================
+
+Necesario para: Temas (#37)
+
+Ya incluido en sección 1 (GET/PUT /api/users/{userId}/preferences)
+
+El campo "theme" puede ser:
+  - "light": Modo claro
+  - "dark": Modo oscuro
+  - "system": Seguir preferencia del sistema
+
+NOTAS:
+- Si no se especifica, usar "system" por defecto
+- El frontend puede usar localStorage como fallback si el backend no está disponible
+
+================================================================================
+10. INSIGHTS AUTOMÁTICOS (OPCIONAL - PARA OPTIMIZACIÓN)
+================================================================================
+
+Necesario para: Insights automáticos (#39)
+
+Endpoint: GET /api/users/{userId}/insights
+Query params:
+  - limit: number (default: 10, max: 50)
+
+Descripción: Obtener insights automáticos basados en datos del usuario
+
+Respuesta esperada:
+  {
+    "insights": [
+      {
+        "id": string,
+        "type": "spending_increase" | "spending_decrease" | "budget_exceeded" | 
+                "net_worth_growth" | "category_trend" | "anomaly" | "achievement",
+        "title": string,
+        "description": string,
+        "severity": "info" | "warning" | "error" | "success",
+        "categoryId": number | null,
+        "categoryName": string | null,
+        "amount": number | null,
+        "percentage": number | null,
+        "date": string,
+        "actionUrl": string | null, // URL para ver más detalles
+        "createdAt": string
+      }
+    ],
+    "generatedAt": string
+  }
+
+Ejemplos de insights:
+- "Has gastado 20% más este mes en Alimentación"
+- "Tu patrimonio ha crecido 15% este trimestre"
+- "Alerta: has excedido el presupuesto de Transporte"
+- "Tendencia: tus ingresos están subiendo"
+- "Has alcanzado tu meta de ahorro del mes"
+
+NOTAS:
+- Este endpoint es opcional, el frontend puede calcular insights localmente
+- Útil para grandes volúmenes de datos o cálculos complejos
+- Considerar generación asíncrona y caché
+- Priorizar insights más relevantes (severity, fecha, importancia)
+
+================================================================================
+MEJORAS EN ENDPOINTS EXISTENTES
+================================================================================
+
+### GET /api/users/{userId}/transactions
+Añadir los mismos query params que en búsqueda avanzada (#4):
+  - q, minAmount, maxAmount, categoryIds, parentCategoryId, assetIds, 
+    liabilityIds, type, startDate, endDate, sortBy, sortOrder, page, pageSize
+
+Mantener compatibilidad con implementación actual (sin params = comportamiento actual).
+
+### GET /api/users/{userId}/categories
+Añadir query params:
+  - includeStats: boolean (incluir estadísticas básicas en respuesta)
+  - parentCategoryId: number (filtrar por categoría padre)
+  - includeColors: boolean (default: true, incluir color e icon)
+
+### GET /api/users/{userId}/dashboard
+Mejorar respuesta para incluir:
+  - trends: comparación con período anterior
+  - topCategories: top 5 categorías
+  - alerts: alertas y notificaciones relevantes (presupuestos excedidos, etc.)
+
+Respuesta mejorada:
+  {
+    // ... datos existentes ...
+    "trends": {
+      "income": { "change": number, "percentage": number },
+      "expenses": { "change": number, "percentage": number },
+      "balance": { "change": number, "percentage": number }
+    },
+    "topCategories": [
+      {
+        "categoryId": number,
+        "categoryName": string,
+        "total": number,
+        "type": "income" | "expense"
+      }
+    ],
+    "alerts": [
+      {
+        "type": "budget_exceeded" | "valuation_due" | etc.,
+        "message": string,
+        "categoryId": number | null
+      }
+    ]
+  }
+
+================================================================================
+PRIORIDADES DE IMPLEMENTACIÓN
+================================================================================
+
+ALTA PRIORIDAD (Implementar primero):
+1. Presupuestos por categoría (#6)
+2. Plantillas de transacciones (#3)
+3. Colores personalizados (#7)
+4. Búsqueda avanzada (#4) - Mejora endpoint existente
+
+MEDIA PRIORIDAD:
+5. Configuración de dashboard (#1)
+6. Comparación de períodos (#2) - Opcional pero recomendado
+7. Estadísticas por categoría (#8) - Opcional pero recomendado
+
+BAJA PRIORIDAD (Opcional):
+8. Análisis de patrones (#5)
+9. Insights automáticos (#10)
+10. Preferencias de tema (#9) - Ya incluido en #1
+
+================================================================================
+NOTAS IMPORTANTES
+================================================================================
+
+1. SEGURIDAD:
+   - Todos los endpoints deben validar que userId en path corresponda al usuario autenticado
+   - Validar que todos los IDs (categoryId, assetId, etc.) pertenezcan al usuario
+   - Sanitizar inputs de búsqueda para prevenir inyección
+   - Rate limiting en endpoints de búsqueda y analytics
+
+2. PERFORMANCE:
+   - Implementar índices en BD para búsquedas rápidas
+   - Considerar caché para endpoints de estadísticas y analytics
+   - Paginación en todos los endpoints que devuelven listas
+   - Lazy loading de relaciones cuando sea posible
+
+3. VALIDACIONES:
+   - Validar formatos de fecha (ISO 8601)
+   - Validar rangos de fechas (startDate <= endDate)
+   - Validar que parentCategoryId no cree ciclos
+   - Validar formatos de color (hex code)
+   - Validar que presupuestos sean números positivos
+
+4. COMPATIBILIDAD:
+   - Mantener compatibilidad con implementación actual
+   - Los nuevos campos deben ser opcionales
+   - Endpoints nuevos no deben romper funcionalidad existente
+
+5. DOCUMENTACIÓN:
+   - Documentar todos los endpoints en Swagger/OpenAPI
+   - Incluir ejemplos de request/response
+   - Documentar códigos de error
+
+================================================================================
+ESTRUCTURA DE BASE DE DATOS SUGERIDA
+================================================================================
+
+Nuevas tablas necesarias:
+
+1. user_preferences
+   - userId (FK)
+   - theme
+   - fontSize
+   - dateFormat
+   - currency
+   - language
+   - createdAt
+   - updatedAt
+
+2. dashboard_config
+   - userId (FK)
+   - widgetOrder (JSON)
+   - visibleWidgets (JSON)
+   - layout
+   - createdAt
+   - updatedAt
+
+3. transaction_templates
+   - templateId (PK)
+   - userId (FK)
+   - name
+   - categoryId (FK)
+   - type
+   - amount
+   - assetId (FK, nullable)
+   - relatedAssetId (FK, nullable)
+   - liabilityId (FK, nullable)
+   - description
+   - frequency
+   - createdAt
+   - updatedAt
+
+4. category_budgets
+   - budgetId (PK)
+   - categoryId (FK)
+   - userId (FK)
+   - amount
+   - period
+   - createdAt
+   - updatedAt
+
+Actualizaciones a tablas existentes:
+
+5. categories
+   - Añadir: color (VARCHAR, nullable)
+   - Añadir: icon (VARCHAR, nullable)
+
+================================================================================
+FECHA DE CREACIÓN
+================================================================================
+Fecha: 2024
+Frontend: cuentas-front
+Versión: 2.0 - Mejoras Priorizadas
+
+================================================================================
