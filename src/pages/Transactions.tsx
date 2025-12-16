@@ -1,6 +1,6 @@
 // typescript
 // `src/pages/Transactions.tsx`
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -427,8 +427,8 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleSaveAll = async () => {
-      if (!user?.userId) return;
+  const handleSaveAll = useCallback(async () => {
+    if (!user?.userId) return;
 
       // Primero aplicar los ajustes pendientes
       const rowsWithAdjustments = applyPendingAdjustments(rows);
@@ -537,11 +537,11 @@ const Transactions: React.FC = () => {
 
         setQuickAdjustValues({}); // Limpiar ajustes pendientes
         fetchTransactions();
-      } catch (err) {
-        console.error('Error guardando transacciones:', err);
-        toast.error('Error guardando transacciones');
-      }
-    };
+    } catch (err) {
+      console.error('Error guardando transacciones:', err);
+      toast.error('Error guardando transacciones');
+    }
+  }, [user?.userId, rows, categories, assets, liabilities, quickAdjustValues, fetchTransactions]);
 
   // loading guard se mueve más abajo para no romper el orden de hooks
 
@@ -797,7 +797,7 @@ const Transactions: React.FC = () => {
   };
 
   // Función para exportar transacciones a CSV
-  const exportToCSV = () => {
+  const exportToCSV = useCallback(() => {
     const headers = ['Fecha', 'Tipo', 'Categoría', 'Importe', 'Activo', 'Activo Relacionado', 'Pasivo', 'Descripción'];
     const csvRows = [headers.join(',')];
     
@@ -834,7 +834,7 @@ const Transactions: React.FC = () => {
     link.click();
     URL.revokeObjectURL(url);
     toast.success('Transacciones exportadas a CSV');
-  };
+  }, [rows, categories, assets, liabilities]);
 
   // Atajos de teclado
   useEffect(() => {
@@ -848,7 +848,7 @@ const Transactions: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         const hasNewRows = rows.some(r => r.isNew);
-        if (hasNewRows) {
+        if (hasNewRows && user?.userId) {
           handleSaveAll();
         }
       }
@@ -866,8 +866,7 @@ const Transactions: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickMode, rows]);
+  }, [quickMode, rows, user?.userId, handleSaveAll, exportToCSV]);
 
   return (
     <Layout>
