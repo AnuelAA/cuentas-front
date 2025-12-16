@@ -1,6 +1,6 @@
 // typescript
 // `src/pages/Transactions.tsx`
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -797,7 +797,7 @@ const Transactions: React.FC = () => {
   };
 
   // Función para exportar transacciones a CSV
-  const exportToCSV = useCallback(() => {
+  const exportToCSV = () => {
     const headers = ['Fecha', 'Tipo', 'Categoría', 'Importe', 'Activo', 'Activo Relacionado', 'Pasivo', 'Descripción'];
     const csvRows = [headers.join(',')];
     
@@ -834,7 +834,7 @@ const Transactions: React.FC = () => {
     link.click();
     URL.revokeObjectURL(url);
     toast.success('Transacciones exportadas a CSV');
-  }, [rows, categories, assets, liabilities]);
+  };
 
   // Atajos de teclado
   useEffect(() => {
