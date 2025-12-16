@@ -15,7 +15,8 @@ import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import {
   ResponsiveContainer,
   PieChart,
@@ -27,7 +28,9 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  ReferenceLine
+  ReferenceLine,
+  Legend,
+  Brush
 } from 'recharts';
 import {
   format,
@@ -67,6 +70,7 @@ const Dashboard: React.FC = () => {
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
   const [selectedLiabilityKeys, setSelectedLiabilityKeys] = useState<Record<string, boolean>>({});
   const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
+  const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({}); // Controlar visibilidad de series en gráficos
 
   // --- Helpers de rango (UI) ---
   const setYearRange = (offset: number) => {
@@ -1211,9 +1215,40 @@ const Dashboard: React.FC = () => {
         {netWorthEvolution.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Evolución del Patrimonio Neto</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Evolución del Patrimonio Neto</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    const chartElement = document.querySelector('[data-chart="net-worth"]');
+                    if (chartElement) {
+                      try {
+                        toast.loading('Exportando gráfico...', { id: 'export-networth' });
+                        const canvas = await html2canvas(chartElement as HTMLElement, {
+                          backgroundColor: '#ffffff',
+                          scale: 2,
+                        });
+                        const url = canvas.toDataURL('image/png');
+                        const link = document.createElement('a');
+                        link.download = `evolucion-patrimonio-neto_${format(new Date(), 'yyyy-MM-dd')}.png`;
+                        link.href = url;
+                        link.click();
+                        toast.success('Gráfico exportado correctamente', { id: 'export-networth' });
+                      } catch (error) {
+                        console.error('Error exportando gráfico:', error);
+                        toast.error('Error al exportar el gráfico', { id: 'export-networth' });
+                      }
+                    }
+                  }}
+                  className="text-xs"
+                  title="Exportar gráfico como PNG"
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent data-chart="net-worth">
               <ResponsiveContainer width="100%" height={300}>
                 <RechartsLineChart data={netWorthEvolution}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1266,14 +1301,50 @@ const Dashboard: React.FC = () => {
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-4">
           {/* Ingresos vs Gastos */}
           <Card>
-            <CardHeader><CardTitle>Ingresos vs Gastos</CardTitle></CardHeader>
-            <CardContent className="flex items-center justify-center pt-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Ingresos vs Gastos</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    const chartElement = document.querySelector('[data-chart="income-vs-expense"]');
+                    if (chartElement) {
+                      try {
+                        toast.loading('Exportando gráfico...', { id: 'export-chart' });
+                        const canvas = await html2canvas(chartElement as HTMLElement, {
+                          backgroundColor: '#ffffff',
+                          scale: 2,
+                        });
+                        const url = canvas.toDataURL('image/png');
+                        const link = document.createElement('a');
+                        link.download = `ingresos-vs-gastos_${format(new Date(), 'yyyy-MM-dd')}.png`;
+                        link.href = url;
+                        link.click();
+                        toast.success('Gráfico exportado correctamente', { id: 'export-chart' });
+                      } catch (error) {
+                        console.error('Error exportando gráfico:', error);
+                        toast.error('Error al exportar el gráfico', { id: 'export-chart' });
+                      }
+                    }
+                  }}
+                  className="text-xs"
+                  title="Exportar gráfico como PNG"
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="flex items-center justify-center pt-6" data-chart="income-vs-expense">
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie data={incomeVsExpense} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={36} outerRadius={64} labelLine={false} label={false}>
                     {incomeVsExpense.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                   </Pie>
                   <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Legend 
+                    wrapperStyle={{ fontSize: '12px' }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
@@ -1376,10 +1447,41 @@ const Dashboard: React.FC = () => {
         {/* Evolución de Activos */}
         <Card className="overflow-visible">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LineChartIcon className="h-5 w-5" />
-              Evolución de Activos (por activo)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <LineChartIcon className="h-5 w-5" />
+                Evolución de Activos (por activo)
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  const chartElement = document.querySelector('[data-chart="assets-evolution"]');
+                  if (chartElement) {
+                    try {
+                      toast.loading('Exportando gráfico...', { id: 'export-assets' });
+                      const canvas = await html2canvas(chartElement as HTMLElement, {
+                        backgroundColor: '#ffffff',
+                        scale: 2,
+                      });
+                      const url = canvas.toDataURL('image/png');
+                      const link = document.createElement('a');
+                      link.download = `evolucion-activos_${format(new Date(), 'yyyy-MM-dd')}.png`;
+                      link.href = url;
+                      link.click();
+                      toast.success('Gráfico exportado correctamente', { id: 'export-assets' });
+                    } catch (error) {
+                      console.error('Error exportando gráfico:', error);
+                      toast.error('Error al exportar el gráfico', { id: 'export-assets' });
+                    }
+                  }
+                }}
+                className="text-xs"
+                title="Exportar gráfico como PNG"
+              >
+                <Download className="h-3 w-3" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="overflow-visible">
             <div className="mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
@@ -1398,13 +1500,14 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8">
+            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8" data-chart="assets-evolution">
               <ResponsiveContainer width="100%" height="100%" style={{ overflow: 'visible' }}>
-                <RechartsLineChart data={chartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+                <RechartsLineChart data={chartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis type="number" domain={buildDomain(assetsMax)} tickFormatter={(v) => formatCurrencyNoCents(Number(v))} tick={{ fontSize: 12 }} />
                   <Tooltip content={CustomTooltipAssets} />
+                  <Brush dataKey="month" height={30} stroke="#8884d8" />
                   {(assetsInfo || []).map(info =>
                     selectedKeys[info.key] ? (
                       <Line key={info.key} type="monotone" dataKey={info.key} name={info.name} stroke={info.color} dot={false} strokeWidth={2} />
@@ -1441,13 +1544,14 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8">
+            <div className="h-[300px] sm:h-[420px] overflow-visible -ml-2 sm:-ml-8" data-chart="liabilities-evolution">
               <ResponsiveContainer width="100%" height="100%" style={{ overflow: 'visible' }}>
-                <RechartsLineChart data={liabChartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+                <RechartsLineChart data={liabChartMonths} margin={{ top: 20, right: 20, left: 0, bottom: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis type="number" domain={buildDomain(liabilitiesMax)} tickFormatter={(v) => formatCurrencyNoCents(Number(v))} tick={{ fontSize: 12 }} />
                   <Tooltip content={CustomTooltipLiabilities} />
+                  <Brush dataKey="month" height={30} stroke="#8884d8" />
                   {(liabilitiesInfo || []).map(info =>
                     selectedLiabilityKeys[info.key] ? (
                       <Line key={info.key} type="monotone" dataKey={info.key} name={info.name} stroke={info.color} dot={false} strokeWidth={2} />

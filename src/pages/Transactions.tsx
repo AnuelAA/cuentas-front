@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
 import { toast } from 'sonner';
@@ -96,6 +96,9 @@ const Transactions: React.FC = () => {
   const [editingRowIds, setEditingRowIds] = useState<Record<string, boolean>>({});
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState<string>('');
+  const [quickMode, setQuickMode] = useState(false); // Modo rápido de entrada
+  const [quickModeCount, setQuickModeCount] = useState(0); // Contador de transacciones añadidas en modo rápido
+  const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'amount' | 'category'; direction: 'asc' | 'desc' } | null>(null); // Ordenamiento
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -793,6 +796,79 @@ const Transactions: React.FC = () => {
     }
   };
 
+  // Función para exportar transacciones a CSV
+  const exportToCSV = () => {
+    const headers = ['Fecha', 'Tipo', 'Categoría', 'Importe', 'Activo', 'Activo Relacionado', 'Pasivo', 'Descripción'];
+    const csvRows = [headers.join(',')];
+    
+    rows
+      .filter(r => !r.isNew) // Solo transacciones guardadas
+      .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+      .forEach(row => {
+        const categoryName = row.categoryName || 
+          (categories.find(c => c.categoryId === row.categoryId)?.name) || 
+          'Sin categoría';
+        const assetName = assets.find(a => a.assetId === row.assetId)?.name || '';
+        const relatedAssetName = assets.find(a => a.assetId === row.relatedAssetId)?.name || '';
+        const liabilityName = liabilities.find(l => l.liabilityId === row.liabilityId)?.name || '';
+        
+        const csvRow = [
+          safeFormatDate(row.transactionDate),
+          row.type === 'income' ? 'Ingreso' : 'Gasto',
+          `"${categoryName}"`,
+          row.amount.toFixed(2).replace('.', ','),
+          `"${assetName}"`,
+          `"${relatedAssetName}"`,
+          `"${liabilityName}"`,
+          `"${row.description || ''}"`
+        ];
+        csvRows.push(csvRow.join(','));
+      });
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM para Excel
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transacciones_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Transacciones exportadas a CSV');
+  };
+
+  // Atajos de teclado
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + K: Toggle modo rápido
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setQuickMode(prev => !prev);
+      }
+      // Ctrl/Cmd + S: Guardar todas (si hay cambios)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        const hasNewRows = rows.some(r => r.isNew);
+        if (hasNewRows) {
+          handleSaveAll();
+        }
+      }
+      // Ctrl/Cmd + E: Exportar CSV
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        exportToCSV();
+      }
+      // Esc: Salir del modo rápido
+      if (e.key === 'Escape' && quickMode) {
+        setQuickMode(false);
+        setQuickModeCount(0);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickMode, rows]);
+
   return (
     <Layout>
       <div className="space-y-6 max-w-7xl mx-auto px-2 sm:px-4">
@@ -826,6 +902,15 @@ const Transactions: React.FC = () => {
                   />
                 </div>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                title="Exportar a CSV (Ctrl+E)"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Exportar CSV
+              </Button>
             </div>
           </div>
 
@@ -875,11 +960,161 @@ const Transactions: React.FC = () => {
           </div>
         </div>
 
-        {/* Añadir transacción rápida (cualquier categoría, incluso nueva) */}
-        <Card className="border-accent shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Añadir transacción rápida</CardTitle>
-          </CardHeader>
+        {/* Modo rápido de entrada */}
+        {quickMode ? (
+          <Card className="border-primary shadow-lg bg-gradient-to-br from-primary/5 to-primary/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  Modo Rápido {quickModeCount > 0 && <span className="text-sm text-muted-foreground">({quickModeCount} añadidas)</span>}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setQuickMode(false);
+                    setQuickModeCount(0);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label htmlFor="quick-amount-input" className="text-xs">Importe *</Label>
+                  <Input
+                    id="quick-amount-input"
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    className="h-10 text-lg font-semibold"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        const amountInput = e.currentTarget;
+                        const categoryInput = document.getElementById('quick-category-input') as HTMLInputElement;
+                        const amount = parseFloat(amountInput.value.replace(',', '.'));
+                        const categoryName = categoryInput?.value?.trim();
+                        
+                        if (!categoryName || isNaN(amount) || amount <= 0) {
+                          toast.error('Completa categoría e importe');
+                          return;
+                        }
+                        
+                        try {
+                          const payload = await buildPayloadFromRow({
+                            localId: 'temp',
+                            isNew: true,
+                            type: 'expense',
+                            categoryName,
+                            transactionDate: defaultNewDate,
+                            description: '',
+                            amount,
+                            assetId: primaryAssetId || undefined,
+                          });
+                          
+                          await createTransaction(user!.userId, payload);
+                          setQuickModeCount(prev => prev + 1);
+                          toast.success('Guardada', { duration: 1000 });
+                          
+                          // Limpiar y mantener focus
+                          amountInput.value = '';
+                          if (categoryInput) categoryInput.value = '';
+                          amountInput.focus();
+                          fetchTransactions();
+                        } catch (error) {
+                          console.error('Error:', error);
+                          toast.error('Error al guardar');
+                        }
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="quick-category-input" className="text-xs">Categoría *</Label>
+                  <Input
+                    id="quick-category-input"
+                    list="categories-list"
+                    placeholder="Nombre categoría"
+                    className="h-10"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const amountInput = document.getElementById('quick-amount-input') as HTMLInputElement;
+                        amountInput?.focus();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    onClick={async () => {
+                      const amountInput = document.getElementById('quick-amount-input') as HTMLInputElement;
+                      const categoryInput = document.getElementById('quick-category-input') as HTMLInputElement;
+                      const amount = parseFloat(amountInput?.value.replace(',', '.') || '0');
+                      const categoryName = categoryInput?.value?.trim();
+                      
+                      if (!categoryName || isNaN(amount) || amount <= 0) {
+                        toast.error('Completa categoría e importe');
+                        return;
+                      }
+                      
+                      try {
+                        const payload = await buildPayloadFromRow({
+                          localId: 'temp',
+                          isNew: true,
+                          type: 'expense',
+                          categoryName,
+                          transactionDate: defaultNewDate,
+                          description: '',
+                          amount,
+                          assetId: primaryAssetId || undefined,
+                        });
+                        
+                        await createTransaction(user!.userId, payload);
+                        setQuickModeCount(prev => prev + 1);
+                        toast.success('Guardada', { duration: 1000 });
+                        
+                        amountInput.value = '';
+                        categoryInput.value = '';
+                        amountInput.focus();
+                        fetchTransactions();
+                      } catch (error) {
+                        console.error('Error:', error);
+                        toast.error('Error al guardar');
+                      }
+                    }}
+                    className="h-10 w-full bg-primary hover:bg-primary/90"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Guardar y continuar
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Presiona Enter en el importe para guardar. Esc para salir. Fecha: {safeFormatDate(defaultNewDate)}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-accent shadow-md">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">Añadir transacción rápida</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setQuickMode(true)}
+                  title="Modo rápido (Ctrl+K)"
+                >
+                  <Zap className="h-4 w-4 mr-1" />
+                  Modo rápido
+                </Button>
+              </div>
+            </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-2 items-start">
               <Input
@@ -992,6 +1227,7 @@ const Transactions: React.FC = () => {
             <p className="text-xs text-muted-foreground mt-2">Puedes escribir una categoría nueva. Se guardará inmediatamente.</p>
           </CardContent>
         </Card>
+        )}
 
         {/* Sección de Ingresos agrupados por categoría */}
         <Card className="border-success/30 shadow-lg">
@@ -1094,9 +1330,57 @@ const Transactions: React.FC = () => {
                 {/* Histórico de transacciones de esta categoría */}
                 {categoryGroup.rows.filter(r => !r.isNew).length > 0 && (
                   <div className="border rounded-lg p-3 bg-accent/5">
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Transacciones registradas</h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Transacciones registradas</h4>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setSortConfig(prev => 
+                            prev?.key === 'date' && prev.direction === 'desc' 
+                              ? { key: 'date', direction: 'asc' }
+                              : { key: 'date', direction: 'desc' }
+                          )}
+                          title="Ordenar por fecha"
+                        >
+                          <ArrowUpDown className="h-3 w-3 mr-1" />
+                          Fecha
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setSortConfig(prev => 
+                            prev?.key === 'amount' && prev.direction === 'desc' 
+                              ? { key: 'amount', direction: 'asc' }
+                              : { key: 'amount', direction: 'desc' }
+                          )}
+                          title="Ordenar por importe"
+                        >
+                          <ArrowUpDown className="h-3 w-3 mr-1" />
+                          Importe
+                        </Button>
+                      </div>
+                    </div>
                     <div className="space-y-2">
-                {categoryGroup.rows.filter(r => !r.isNew).map((r) => (
+                {categoryGroup.rows
+                  .filter(r => !r.isNew)
+                  .sort((a, b) => {
+                    if (!sortConfig) return 0;
+                    if (sortConfig.key === 'date') {
+                      const dateA = new Date(a.transactionDate).getTime();
+                      const dateB = new Date(b.transactionDate).getTime();
+                      return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
+                    }
+                    if (sortConfig.key === 'amount') {
+                      return sortConfig.direction === 'asc' 
+                        ? (a.amount || 0) - (b.amount || 0)
+                        : (b.amount || 0) - (a.amount || 0);
+                    }
+                    return 0;
+                  })
+                  .map((r) => (
                   <div key={r.localId} className="flex items-center justify-between p-2 bg-white rounded border border-accent hover:bg-accent/10 transition-colors">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                       {editingRowIds[r.localId] ? (

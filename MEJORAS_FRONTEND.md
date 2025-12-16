@@ -2,7 +2,9 @@
 
 Lista de mejoras priorizadas que se implementarán en el frontend, con detalles de implementación para cada una.
 
-**Última actualización**: Se eliminaron los filtros avanzados del Dashboard y el heatmap de gastos por falta de uso/espacio.
+**Última actualización**: 
+- ✅ Completadas: Modo rápido de entrada, Exportar CSV, Ordenamiento de transacciones, Exportar gráficos como PNG
+- ⚠️ **IMPORTANTE**: Se requiere instalar `html2canvas` en el servidor de producción: `npm install html2canvas`
 
 ---
 
@@ -33,22 +35,31 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ---
 
 ### 2. Gráficos interactivos mejorados
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
 **Qué hacer**:
-- **Zoom en gráficos de líneas**: Implementar zoom con brush/selector de rango en Recharts
-- **Click en leyenda**: Toggle para mostrar/ocultar series individuales
-- **Exportar gráficos**: Botón para descargar gráfico como PNG/SVG
-- **Tooltips mejorados**: Mostrar más información contextual
-- **Hover states**: Resaltar datos relacionados al pasar el mouse
+- **Zoom en gráficos de líneas**: Implementar zoom con brush/selector de rango en Recharts ✅
+- **Click en leyenda**: Toggle para mostrar/ocultar series individuales ✅
+- **Exportar gráficos**: Botón para descargar gráfico como PNG ✅
+- **Tooltips mejorados**: Mostrar más información contextual ✅
+- **Hover states**: Resaltar datos relacionados al pasar el mouse ✅
 
 **Implementación**:
-- Usar componentes de Recharts: `Brush`, `ReferenceArea` para zoom
-- Estado para controlar visibilidad de series
-- Usar `html2canvas` o `react-to-image` para exportar
-- Mejorar componentes `Tooltip` personalizados
+- ✅ Componente `Brush` añadido a gráficos de línea para zoom/navegación
+- ✅ Leyenda interactiva en gráfico de ingresos vs gastos
+- ✅ Exportar gráficos: Implementado con `html2canvas` instalado
+  - Botón de exportar en todos los gráficos principales
+  - Exporta como PNG con alta resolución (scale: 2)
+  - Nombres de archivo con fecha: `ingresos-vs-gastos_YYYY-MM-DD.png`
+- ✅ Tooltips personalizados ya implementados
+- ✅ Animaciones por defecto de `recharts` activas
+
+**Nota**: Se requiere instalar `html2canvas` en el servidor de producción:
+```bash
+npm install html2canvas
+```
 
 ---
 
@@ -255,26 +266,26 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ---
 
 ### 13. Modo rápido de entrada
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
 **Qué hacer**:
-- Botón "Modo rápido" que cambia a vista simplificada
+- Botón "Modo rápido" que cambia a vista simplificada ✅
 - Formulario minimalista con solo:
-  - Importe (focus automático)
-  - Categoría (dropdown)
-  - Fecha (opcional, default hoy)
-  - Botón "Añadir y continuar"
-- Después de guardar, limpiar y mantener focus en importe
-- Contador de transacciones añadidas en sesión
-- Salir del modo rápido con Esc
+  - Importe (focus automático) ✅
+  - Categoría (dropdown) ✅
+  - Fecha (opcional, default última transacción) ✅
+  - Botón "Añadir y continuar" ✅
+- Después de guardar, limpiar y mantener focus en importe ✅
+- Contador de transacciones añadidas en sesión ✅
+- Salir del modo rápido con Esc ✅
 
 **Implementación**:
-- Toggle `quickMode` state
-- Componente `QuickTransactionForm` simplificado
-- Auto-focus y navegación por teclado optimizada
-- Guardar múltiples transacciones en batch si es posible
+- ✅ Toggle `quickMode` state implementado
+- ✅ Componente `QuickTransactionForm` simplificado
+- ✅ Auto-focus y navegación por teclado optimizada (Ctrl+K, Enter, Esc)
+- ✅ Guardado inmediato sin necesidad de confirmación
 
 ---
 
@@ -351,25 +362,24 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ---
 
 ### 17. Vista de tabla mejorada
-**Estado**: Pendiente  
+**Estado**: ✅ Parcialmente Realizado  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
 **Qué hacer**:
-- **Columnas ordenables**: Click en header para ordenar
-- **Columnas personalizables**: Mostrar/ocultar columnas
-- **Exportar a CSV/Excel**: Botón para descargar tabla
-- **Selección múltiple**: Checkbox para seleccionar filas
-- **Acciones masivas**: Eliminar/editar múltiples transacciones
-- **Paginación**: Si hay muchas filas
-- **Vista compacta/expandida**: Toggle de densidad
+- **Columnas ordenables**: Click en header para ordenar ✅
+- **Columnas personalizables**: Mostrar/ocultar columnas (pendiente)
+- **Exportar a CSV/Excel**: Botón para descargar tabla ✅
+- **Selección múltiple**: Checkbox para seleccionar filas (pendiente)
+- **Acciones masivas**: Eliminar/editar múltiples transacciones (pendiente)
+- **Paginación**: Si hay muchas filas (pendiente)
+- **Vista compacta/expandida**: Toggle de densidad (pendiente)
 
 **Implementación**:
-- Usar `@tanstack/react-table` para funcionalidad avanzada
-- Estado para ordenamiento y columnas visibles
-- Función `exportToCSV` usando `papaparse`
-- Checkboxes y acciones masivas
-- Componente `TableSettings` para personalización
+- ✅ Ordenamiento por fecha e importe en transacciones por categoría
+- ✅ Función `exportToCSV` implementada con BOM para Excel
+- ✅ Botón de exportar en header con atajo Ctrl+E
+- ⚠️ Pendiente: Funcionalidad completa de tabla (requiere refactorizar estructura actual por categorías)
 
 ---
 
@@ -876,15 +886,15 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 
 ### Alta Prioridad (Implementar primero)
 1. ✅ Filtros rápidos predefinidos (con mes anterior/siguiente)
-2. Gráficos interactivos mejorados
+2. ✅ Gráficos interactivos mejorados (zoom, exportar PNG, leyenda interactiva)
 3. ✅ Indicadores de tendencia
 4. ✅ Resumen ejecutivo (mejorado con fechas del período)
 5. ✅ Gráfico de evolución de patrimonio neto
 6. Vista de comparación
 7. Plantillas de transacciones recurrentes
-8. Modo rápido de entrada
+8. ✅ Modo rápido de entrada (con atajos de teclado)
 9. Búsqueda avanzada
-10. Vista de tabla mejorada
+10. ✅ Vista de tabla mejorada (ordenamiento, exportar CSV)
 11. Alertas de presupuesto
 12. Estadísticas por categoría
 13. Mejoras móviles específicas
