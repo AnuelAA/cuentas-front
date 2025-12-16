@@ -40,12 +40,7 @@ import {
   endOfYear,
   subYears,
   subDays,
-  isValid,
-  eachDayOfInterval,
-  startOfWeek,
-  endOfWeek,
-  getMonth,
-  getYear
+  isValid
 } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -72,10 +67,6 @@ const Dashboard: React.FC = () => {
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
   const [selectedLiabilityKeys, setSelectedLiabilityKeys] = useState<Record<string, boolean>>({});
   const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
-  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null); // Filtro por activo
-  const [selectedLiabilityId, setSelectedLiabilityId] = useState<number | null>(null); // Filtro por pasivo
-  const [minAmount, setMinAmount] = useState<number | null>(null); // Filtro importe mínimo
-  const [maxAmount, setMaxAmount] = useState<number | null>(null); // Filtro importe máximo
 
   // --- Helpers de rango (UI) ---
   const setYearRange = (offset: number) => {
@@ -138,6 +129,22 @@ const Dashboard: React.FC = () => {
     setStartDate(format(startOfMonth(subMonths(today, 11)), 'yyyy-MM-dd'));
     setEndDate(format(endOfMonth(today), 'yyyy-MM-dd'));
     setActiveQuickFilter('last12Months');
+  };
+
+  const setPreviousMonth = () => {
+    const currentStart = parseISO(startDate);
+    const prevMonth = subMonths(currentStart, 1);
+    setStartDate(format(startOfMonth(prevMonth), 'yyyy-MM-dd'));
+    setEndDate(format(endOfMonth(prevMonth), 'yyyy-MM-dd'));
+    setActiveQuickFilter('previousMonth');
+  };
+
+  const setNextMonth = () => {
+    const currentStart = parseISO(startDate);
+    const nextMonth = addMonths(currentStart, 1);
+    setStartDate(format(startOfMonth(nextMonth), 'yyyy-MM-dd'));
+    setEndDate(format(endOfMonth(nextMonth), 'yyyy-MM-dd'));
+    setActiveQuickFilter('nextMonth');
   };
 
   // --- Fetch de datos ---
@@ -331,40 +338,18 @@ const Dashboard: React.FC = () => {
     }
   }, [transactions, categories, groupByParent]);
 
-  // Totales (fallback a metrics si vienen) - aplicando filtros
+  // Totales (fallback a metrics si vienen)
   const incomeTotal = useMemo(() => {
-    const filtered = (transactions || []).filter(t => {
-      if (String(t.type ?? '').toLowerCase() !== 'income') return false;
-      if (selectedAssetId && t.assetId !== selectedAssetId && t.relatedAssetId !== selectedAssetId) return false;
-      if (selectedLiabilityId && t.liabilityId !== selectedLiabilityId) return false;
-      const amount = Number(t.amount) || 0;
-      if (minAmount !== null && amount < minAmount) return false;
-      if (maxAmount !== null && amount > maxAmount) return false;
-      return true;
-    });
-    
-    if (metrics?.totalIncome != null && !selectedAssetId && !selectedLiabilityId && minAmount === null && maxAmount === null) {
-      return metrics.totalIncome;
-    }
-    return filtered.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  }, [metrics, transactions, selectedAssetId, selectedLiabilityId, minAmount, maxAmount]);
+    if (metrics?.totalIncome != null) return metrics.totalIncome;
+    return (transactions || []).filter(t => String(t.type ?? '').toLowerCase() === 'income')
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  }, [metrics, transactions]);
 
   const expenseTotal = useMemo(() => {
-    const filtered = (transactions || []).filter(t => {
-      if (String(t.type ?? '').toLowerCase() !== 'expense') return false;
-      if (selectedAssetId && t.assetId !== selectedAssetId && t.relatedAssetId !== selectedAssetId) return false;
-      if (selectedLiabilityId && t.liabilityId !== selectedLiabilityId) return false;
-      const amount = Math.abs(Number(t.amount) || 0);
-      if (minAmount !== null && amount < minAmount) return false;
-      if (maxAmount !== null && amount > maxAmount) return false;
-      return true;
-    });
-    
-    if (metrics?.totalExpenses != null && !selectedAssetId && !selectedLiabilityId && minAmount === null && maxAmount === null) {
-      return metrics.totalExpenses;
-    }
-    return filtered.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-  }, [metrics, transactions, selectedAssetId, selectedLiabilityId, minAmount, maxAmount]);
+    if (metrics?.totalExpenses != null) return metrics.totalExpenses;
+    return (transactions || []).filter(t => String(t.type ?? '').toLowerCase() === 'expense')
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+  }, [metrics, transactions]);
 
   // --- Cálculo de tendencias (comparación con período anterior) ---
   const [previousPeriodData, setPreviousPeriodData] = useState<{
@@ -536,49 +521,6 @@ const Dashboard: React.FC = () => {
     });
   }, [assets, liabilities]);
 
-  // --- Heatmap de gastos ---
-  const expenseHeatmapData = useMemo(() => {
-    const dailyExpenses: Record<string, number> = {};
-    
-    transactions
-      .filter(t => {
-        // Aplicar filtros
-        if (String(t.type ?? '').toLowerCase() !== 'expense') return false;
-        if (selectedAssetId && t.assetId !== selectedAssetId && t.relatedAssetId !== selectedAssetId) return false;
-        if (selectedLiabilityId && t.liabilityId !== selectedLiabilityId) return false;
-        const amount = Math.abs(Number(t.amount) || 0);
-        if (minAmount !== null && amount < minAmount) return false;
-        if (maxAmount !== null && amount > maxAmount) return false;
-        return true;
-      })
-      .forEach(t => {
-        const date = parseISO(t.transactionDate);
-        if (isValid(date)) {
-          const dateStr = format(date, 'yyyy-MM-dd');
-          dailyExpenses[dateStr] = (dailyExpenses[dateStr] || 0) + Math.abs(Number(t.amount) || 0);
-        }
-      });
-    
-    return dailyExpenses;
-  }, [transactions, selectedAssetId, selectedLiabilityId, minAmount, maxAmount]);
-
-  // Calcular máximo para escala de colores
-  const maxDailyExpense = useMemo(() => {
-    const values = Object.values(expenseHeatmapData);
-    return values.length > 0 ? Math.max(...values) : 0;
-  }, [expenseHeatmapData]);
-
-  // Función para obtener color según intensidad
-  const getHeatmapColor = (amount: number): string => {
-    if (amount === 0) return '#f3f4f6'; // Gris claro
-    if (maxDailyExpense === 0) return '#f3f4f6';
-    
-    const intensity = amount / maxDailyExpense;
-    if (intensity < 0.25) return '#dcfce7'; // Verde muy claro
-    if (intensity < 0.5) return '#86efac'; // Verde claro
-    if (intensity < 0.75) return '#fef08a'; // Amarillo
-    return '#f87171'; // Rojo
-  };
 
   const incomeVsExpense = [
     { name: 'Ingresos', value: incomeTotal ?? 0, color: '#4CAF50' },
@@ -959,11 +901,29 @@ const Dashboard: React.FC = () => {
               <span className="text-xs text-muted-foreground hidden sm:inline">Rápido:</span>
               <Button 
                 size="sm" 
+                variant={activeQuickFilter === 'previousMonth' ? 'default' : 'outline'} 
+                onClick={setPreviousMonth} 
+                className="text-xs sm:text-sm"
+                title="Mes anterior"
+              >
+                ← Mes anterior
+              </Button>
+              <Button 
+                size="sm" 
                 variant={activeQuickFilter === 'thisMonth' ? 'default' : 'outline'} 
                 onClick={setThisMonth} 
                 className="text-xs sm:text-sm"
               >
                 Este mes
+              </Button>
+              <Button 
+                size="sm" 
+                variant={activeQuickFilter === 'nextMonth' ? 'default' : 'outline'} 
+                onClick={setNextMonth} 
+                className="text-xs sm:text-sm"
+                title="Mes siguiente"
+              >
+                Mes siguiente →
               </Button>
               <Button 
                 size="sm" 
@@ -1031,9 +991,12 @@ const Dashboard: React.FC = () => {
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Ingresos del Período</p>
+                <p className="text-sm text-muted-foreground">Ingresos</p>
                 <p className="text-2xl font-bold text-green-600">
                   {formatCurrency(incomeTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
                 </p>
                 {incomeTrend && (
                   <p className={`text-xs flex items-center gap-1 ${incomeTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -1043,9 +1006,12 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Gastos del Período</p>
+                <p className="text-sm text-muted-foreground">Gastos</p>
                 <p className="text-2xl font-bold text-red-600">
                   {formatCurrency(expenseTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
                 </p>
                 {expenseTrend && (
                   <p className={`text-xs flex items-center gap-1 ${expenseTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -1055,19 +1021,17 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Balance (Ingresos - Gastos)</p>
+                <p className="text-sm text-muted-foreground">Resultado</p>
                 <p className={`text-2xl font-bold ${(incomeTotal - expenseTotal) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {(incomeTotal - expenseTotal) >= 0 ? '+' : ''}{formatCurrency(incomeTotal - expenseTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {incomeTotal > 0 ? `Ahorro: ${Math.round(((incomeTotal - expenseTotal) / incomeTotal) * 100)}%` : 'Sin ingresos'}
                 </p>
                 {balanceTrend && (
                   <p className={`text-xs flex items-center gap-1 ${balanceTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
                     {balanceTrend.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                     {balanceTrend.isPositive ? '+' : ''}{balanceTrend.value}% vs período anterior
-                  </p>
-                )}
-                {incomeTotal > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Tasa de ahorro: {Math.round(((incomeTotal - expenseTotal) / incomeTotal) * 100)}%
                   </p>
                 )}
               </div>
@@ -1242,79 +1206,6 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
         )}
-
-        {/* Filtros adicionales */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Filtros Avanzados</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Filtrar por Activo</label>
-                <select
-                  value={selectedAssetId || ''}
-                  onChange={(e) => setSelectedAssetId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Todos los activos</option>
-                  {assets.map(asset => (
-                    <option key={asset.assetId} value={asset.assetId}>{asset.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Filtrar por Pasivo</label>
-                <select
-                  value={selectedLiabilityId || ''}
-                  onChange={(e) => setSelectedLiabilityId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Todos los pasivos</option>
-                  {liabilities.map(liability => (
-                    <option key={liability.liabilityId} value={liability.liabilityId}>{liability.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Importe Mínimo (€)</label>
-                <input
-                  type="number"
-                  value={minAmount || ''}
-                  onChange={(e) => setMinAmount(e.target.value ? parseFloat(e.target.value) : null)}
-                  placeholder="Sin mínimo"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Importe Máximo (€)</label>
-                <input
-                  type="number"
-                  value={maxAmount || ''}
-                  onChange={(e) => setMaxAmount(e.target.value ? parseFloat(e.target.value) : null)}
-                  placeholder="Sin máximo"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            {(selectedAssetId || selectedLiabilityId || minAmount !== null || maxAmount !== null) && (
-              <div className="mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedAssetId(null);
-                    setSelectedLiabilityId(null);
-                    setMinAmount(null);
-                    setMaxAmount(null);
-                  }}
-                >
-                  Limpiar filtros
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Gráfico de evolución de patrimonio neto */}
         {netWorthEvolution.length > 0 && (
@@ -1568,73 +1459,6 @@ const Dashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Heatmap de gastos */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Heatmap de Gastos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {Object.keys(expenseHeatmapData).length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-8">No hay gastos en el periodo</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-7 gap-1 text-xs">
-                  {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
-                    <div key={day} className="text-center text-muted-foreground font-medium py-2">
-                      {day}
-                    </div>
-                  ))}
-                  {(() => {
-                    const start = parseISO(startDate);
-                    const end = parseISO(endDate);
-                    if (!isValid(start) || !isValid(end)) return null;
-                    
-                    const startWeek = startOfWeek(start, { weekStartsOn: 1 });
-                    const endWeek = endOfWeek(end, { weekStartsOn: 1 });
-                    const days = eachDayOfInterval({ start: startWeek, end: endWeek });
-                    
-                    return days.map((day, idx) => {
-                      const dateStr = format(day, 'yyyy-MM-dd');
-                      const amount = expenseHeatmapData[dateStr] || 0;
-                      const isInRange = day >= start && day <= end;
-                      const isCurrentMonth = getMonth(day) === getMonth(new Date()) && getYear(day) === getYear(new Date());
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className={`
-                            aspect-square rounded text-xs flex items-center justify-center
-                            ${!isInRange ? 'opacity-30' : ''}
-                            ${isCurrentMonth ? 'border border-primary/20' : ''}
-                          `}
-                          style={{ backgroundColor: getHeatmapColor(amount) }}
-                          title={isInRange ? `${format(day, 'dd/MM/yyyy')}: ${formatCurrency(amount)}` : ''}
-                        >
-                          {isInRange && amount > 0 && (
-                            <span className="text-[10px] font-medium">
-                              {formatCurrency(amount).replace('€', '').trim()}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Menos</span>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f3f4f6' }} />
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#dcfce7' }} />
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#86efac' }} />
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#fef08a' }} />
-                    <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f87171' }} />
-                  </div>
-                  <span>Más</span>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </Layout>
   );

@@ -2,6 +2,8 @@
 
 Lista de mejoras priorizadas que se implementarán en el frontend, con detalles de implementación para cada una.
 
+**Última actualización**: Se eliminaron los filtros avanzados del Dashboard y el heatmap de gastos por falta de uso/espacio.
+
 ---
 
 ## 📊 DASHBOARD
@@ -137,7 +139,7 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ---
 
 ### 7. Heatmap de gastos
-**Estado**: ✅ Realizado  
+**Estado**: ❌ Descartado (ocupa mucho espacio cuando no hay datos)  
 **Prioridad**: Media  
 **Complejidad**: Media
 
@@ -162,42 +164,20 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ---
 
 ### 8. Filtro por activo/pasivo
-**Estado**: ✅ Realizado  
+**Estado**: ❌ Eliminado (no se usaba, se quitó del Dashboard)  
 **Prioridad**: Media  
 **Complejidad**: Baja
 
-**Qué hacer**:
-- Dropdown/Select en Dashboard para filtrar por activo específico
-- Al seleccionar, mostrar solo transacciones relacionadas a ese activo
-- Opción "Todos" para ver todo
-- Aplicar filtro a gráficos y estadísticas
-- Mostrar badge con activo seleccionado
-
-**Implementación**:
-- Añadir estado `selectedAssetId` en Dashboard
-- Filtrar `transactions` por `assetId` o `relatedAssetId`
-- Select component con lista de activos
-- Aplicar filtro a todos los cálculos de ingresos/gastos
+**Nota**: Esta funcionalidad fue implementada pero posteriormente eliminada del Dashboard por falta de uso.
 
 ---
 
 ### 9. Filtro por rango de importes
-**Estado**: ✅ Realizado  
+**Estado**: ❌ Eliminado (no se usaba, se quitó del Dashboard)  
 **Prioridad**: Media  
 **Complejidad**: Baja
 
-**Qué hacer**:
-- Inputs para "Importe mínimo" e "Importe máximo"
-- Filtrar transacciones por rango de `amount`
-- Aplicar a gráficos y estadísticas
-- Botón "Limpiar filtros"
-- Mostrar contador: "X transacciones en rango"
-
-**Implementación**:
-- Estados `minAmount` y `maxAmount`
-- Filtrar transacciones antes de calcular estadísticas
-- Inputs numéricos con validación
-- Integrar con otros filtros existentes
+**Nota**: Esta funcionalidad fue implementada pero posteriormente eliminada del Dashboard por falta de uso.
 
 ---
 
@@ -895,11 +875,11 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 ## 📋 RESUMEN DE PRIORIDADES
 
 ### Alta Prioridad (Implementar primero)
-1. Filtros rápidos predefinidos
+1. ✅ Filtros rápidos predefinidos (con mes anterior/siguiente)
 2. Gráficos interactivos mejorados
-3. Indicadores de tendencia
-4. Resumen ejecutivo
-5. Gráfico de evolución de patrimonio neto
+3. ✅ Indicadores de tendencia
+4. ✅ Resumen ejecutivo (mejorado con fechas del período)
+5. ✅ Gráfico de evolución de patrimonio neto
 6. Vista de comparación
 7. Plantillas de transacciones recurrentes
 8. Modo rápido de entrada
@@ -909,6 +889,11 @@ Lista de mejoras priorizadas que se implementarán en el frontend, con detalles 
 12. Estadísticas por categoría
 13. Mejoras móviles específicas
 14. Insights automáticos
+
+### Eliminadas/Descartadas
+- ❌ Heatmap de gastos (descartado - ocupa mucho espacio)
+- ❌ Filtro por activo/pasivo (eliminado - no se usaba)
+- ❌ Filtro por rango de importes (eliminado - no se usaba)
 
 ### Media Prioridad
 15. Widgets personalizables
