@@ -9,7 +9,7 @@ import {
   getCategories,
   getAssetTypes
 } from '@/services/api';
-import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType } from '@/types/api';
+import type { DashboardMetrics, DashboardSummary, Asset, Liability, AssetType, Category } from '@/types/api';
 import { calculateCashReconciliation, calculateCashReconciliationRange, isCheckingAccount } from '@/lib/cashReconciliation';
 import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
@@ -64,6 +64,7 @@ const Dashboard: React.FC = () => {
   // Selección para series (activos/pasivos)
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
   const [selectedLiabilityKeys, setSelectedLiabilityKeys] = useState<Record<string, boolean>>({});
+  const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
 
   // --- Helpers de rango (UI) ---
   const setYearRange = (offset: number) => {
@@ -159,7 +160,19 @@ const Dashboard: React.FC = () => {
   const formatCurrencyNoCents = (value: number) =>
     new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value);
 
-  // --- Transformaciones: breakdown por categoría ---
+  // Helper: obtener categoría padre o la misma si no tiene padre
+  const getParentCategory = (categoryId: number): Category | null => {
+    const cat = categories.find(c => c.categoryId === categoryId);
+    if (!cat || !cat.parentCategoryId) return cat;
+    return categories.find(c => c.categoryId === cat.parentCategoryId) || cat;
+  };
+
+  // Helper: obtener todas las subcategorías de una categoría padre
+  const getSubcategories = (parentId: number): Category[] => {
+    return categories.filter(c => c.parentCategoryId === parentId);
+  };
+
+  // --- Transformaciones: breakdown por categoría (individual o por padre) ---
   const incomeByCategory = useMemo(() => {
     const map: Record<number, number> = {};
     (transactions || [])
@@ -167,13 +180,49 @@ const Dashboard: React.FC = () => {
       .forEach(t => {
         const amt = Number(t.amount) || 0;
         const cat = Number(t.categoryId);
-        if (!isNaN(cat)) map[cat] = (map[cat] || 0) + amt;
+        if (!isNaN(cat)) {
+          if (groupByParent) {
+            // Agrupar por categoría padre
+            const parent = getParentCategory(cat);
+            if (parent) {
+              map[parent.categoryId] = (map[parent.categoryId] || 0) + amt;
+            }
+          } else {
+            // Agrupar por categoría individual
+            map[cat] = (map[cat] || 0) + amt;
+          }
+        }
       });
 
-    return (categories || [])
-      .map((c, i) => ({ name: c.name, value: map[c.categoryId] ?? 0, color: c.color ?? COLORS[i % COLORS.length] }))
-      .filter(d => d.value > 0);
-  }, [transactions, categories]);
+    if (groupByParent) {
+      // Solo mostrar categorías padre (sin parentCategoryId)
+      return (categories || [])
+        .filter(c => !c.parentCategoryId) // Solo categorías raíz
+        .map((c, i) => ({ 
+          name: c.name, 
+          value: map[c.categoryId] ?? 0, 
+          color: c.color ?? COLORS[i % COLORS.length],
+          categoryId: c.categoryId,
+          subcategories: getSubcategories(c.categoryId).map(sub => ({
+            name: sub.name,
+            value: (transactions || [])
+              .filter(t => String(t.type ?? '').toLowerCase() === 'income' && Number(t.categoryId) === sub.categoryId)
+              .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+          })).filter(sub => sub.value > 0)
+        }))
+        .filter(d => d.value > 0);
+    } else {
+      // Mostrar todas las categorías individuales
+      return (categories || [])
+        .map((c, i) => ({ 
+          name: c.name, 
+          value: map[c.categoryId] ?? 0, 
+          color: c.color ?? COLORS[i % COLORS.length],
+          categoryId: c.categoryId
+        }))
+        .filter(d => d.value > 0);
+    }
+  }, [transactions, categories, groupByParent]);
 
   const expenseByCategory = useMemo(() => {
     const map: Record<number, number> = {};
@@ -182,13 +231,49 @@ const Dashboard: React.FC = () => {
       .forEach(t => {
         const amt = Math.abs(Number(t.amount) || 0);
         const cat = Number(t.categoryId);
-        if (!isNaN(cat)) map[cat] = (map[cat] || 0) + amt;
+        if (!isNaN(cat)) {
+          if (groupByParent) {
+            // Agrupar por categoría padre
+            const parent = getParentCategory(cat);
+            if (parent) {
+              map[parent.categoryId] = (map[parent.categoryId] || 0) + amt;
+            }
+          } else {
+            // Agrupar por categoría individual
+            map[cat] = (map[cat] || 0) + amt;
+          }
+        }
       });
 
-    return (categories || [])
-      .map((c, i) => ({ name: c.name, value: map[c.categoryId] ?? 0, color: c.color ?? COLORS[i % COLORS.length] }))
-      .filter(d => d.value > 0);
-  }, [transactions, categories]);
+    if (groupByParent) {
+      // Solo mostrar categorías padre (sin parentCategoryId)
+      return (categories || [])
+        .filter(c => !c.parentCategoryId) // Solo categorías raíz
+        .map((c, i) => ({ 
+          name: c.name, 
+          value: map[c.categoryId] ?? 0, 
+          color: c.color ?? COLORS[i % COLORS.length],
+          categoryId: c.categoryId,
+          subcategories: getSubcategories(c.categoryId).map(sub => ({
+            name: sub.name,
+            value: Math.abs((transactions || [])
+              .filter(t => String(t.type ?? '').toLowerCase() === 'expense' && Number(t.categoryId) === sub.categoryId)
+              .reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0))
+          })).filter(sub => sub.value > 0)
+        }))
+        .filter(d => d.value > 0);
+    } else {
+      // Mostrar todas las categorías individuales
+      return (categories || [])
+        .map((c, i) => ({ 
+          name: c.name, 
+          value: map[c.categoryId] ?? 0, 
+          color: c.color ?? COLORS[i % COLORS.length],
+          categoryId: c.categoryId
+        }))
+        .filter(d => d.value > 0);
+    }
+  }, [transactions, categories, groupByParent]);
 
   // Totales (fallback a metrics si vienen)
   const incomeTotal = useMemo(() => {
@@ -298,29 +383,42 @@ const Dashboard: React.FC = () => {
   }, [liabilities, startDate, endDate]);
 
   // --- Leyenda ordenada renderizada externamente (evita solapado en Recharts) ---
-  const renderSortedLegend = (data: { name: string; value: number; color?: string }[], total: number) => {
+  const renderSortedLegend = (data: { name: string; value: number; color?: string; subcategories?: Array<{ name: string; value: number }> }[], total: number) => {
     const items = [...(data || [])].sort((a, b) => b.value - a.value);
     return (
       <div className="w-full mt-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {items.map((it, idx) => (
-            <div key={idx} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
-              <span 
-                style={{ 
-                  width: 14, 
-                  height: 14, 
-                  background: it.color ?? COLORS[idx % COLORS.length], 
-                  display: 'inline-block', 
-                  borderRadius: 3,
-                  flexShrink: 0
-                }} 
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{it.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {formatCurrency(it.value)} ({Math.round((it.value / (total || 1)) * 100)}%)
+            <div key={idx} className="p-3 rounded-md bg-muted/30 border">
+              <div className="flex items-center gap-2 mb-2">
+                <span 
+                  style={{ 
+                    width: 14, 
+                    height: 14, 
+                    background: it.color ?? COLORS[idx % COLORS.length], 
+                    display: 'inline-block', 
+                    borderRadius: 3,
+                    flexShrink: 0
+                  }} 
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{it.name}</div>
+                  <div className="text-xs font-medium text-primary">
+                    {formatCurrency(it.value)} ({Math.round((it.value / (total || 1)) * 100)}%)
+                  </div>
                 </div>
               </div>
+              {/* Mostrar subcategorías si existen y estamos agrupando por padre */}
+              {groupByParent && it.subcategories && it.subcategories.length > 0 && (
+                <div className="ml-6 mt-2 space-y-1 border-l-2 border-muted pl-2">
+                  {it.subcategories.map((sub, subIdx) => (
+                    <div key={subIdx} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground truncate flex-1">{sub.name}</span>
+                      <span className="ml-2 font-medium">{formatCurrency(sub.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -725,7 +823,19 @@ const Dashboard: React.FC = () => {
 
           {/* Ingresos por categoría (Top N) */}
           <Card>
-            <CardHeader><CardTitle>Ingresos por categoría (Top {TOP_N})</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Ingresos por categoría (Top {TOP_N})</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGroupByParent(!groupByParent)}
+                  className="text-xs"
+                >
+                  {groupByParent ? 'Ver individuales' : 'Agrupar por padre'}
+                </Button>
+              </div>
+            </CardHeader>
             <CardContent>
               {incomeByCategoryTop.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">No hay ingresos en el periodo</div>
@@ -749,7 +859,19 @@ const Dashboard: React.FC = () => {
 
           {/* Gastos por categoría (Top N) */}
           <Card>
-            <CardHeader><CardTitle>Gastos por categoría (Top {TOP_N})</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Gastos por categoría (Top {TOP_N})</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGroupByParent(!groupByParent)}
+                  className="text-xs"
+                >
+                  {groupByParent ? 'Ver individuales' : 'Agrupar por padre'}
+                </Button>
+              </div>
+            </CardHeader>
             <CardContent>
               {expenseByCategoryTop.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">No hay gastos en el periodo</div>
