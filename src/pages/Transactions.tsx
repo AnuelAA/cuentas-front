@@ -427,121 +427,121 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleSaveAll = useCallback(async () => {
+  const handleSaveAll = async () => {
     if (!user?.userId) return;
 
-      // Primero aplicar los ajustes pendientes
-      const rowsWithAdjustments = applyPendingAdjustments(rows);
+    // Primero aplicar los ajustes pendientes
+    const rowsWithAdjustments = applyPendingAdjustments(rows);
       
-      console.log('Rows después de aplicar ajustes:', rowsWithAdjustments);
-      console.log('Ajustes pendientes:', quickAdjustValues);
+    console.log('Rows después de aplicar ajustes:', rowsWithAdjustments);
+    console.log('Ajustes pendientes:', quickAdjustValues);
 
-      const invalid = rowsWithAdjustments.filter(r => r.amount == null || isNaN(r.amount) || r.amount < 0);
-      if (invalid.length > 0) {
-        console.error('Filas inválidas:', invalid);
-        toast.error('Todas las filas deben tener una cantidad válida (mayor o igual a 0)');
+    const invalid = rowsWithAdjustments.filter(r => r.amount == null || isNaN(r.amount) || r.amount < 0);
+    if (invalid.length > 0) {
+      console.error('Filas inválidas:', invalid);
+      toast.error('Todas las filas deben tener una cantidad válida (mayor o igual a 0)');
+      return;
+    }
+    
+    // Filtrar filas con cantidad 0 (no tiene sentido guardar transacciones de 0)
+    const zeroAmountRows = rowsWithAdjustments.filter(r => r.amount === 0);
+    if (zeroAmountRows.length > 0) {
+      const confirmDelete = confirm(`Hay ${zeroAmountRows.length} transacción(es) con cantidad 0. ¿Deseas eliminarlas antes de guardar?`);
+      if (confirmDelete) {
+        const zeroIds = zeroAmountRows.map(r => r.localId);
+        setRows(prev => prev.filter(r => !zeroIds.includes(r.localId)));
+        setQuickAdjustValues(prev => {
+          const next = { ...prev };
+          zeroIds.forEach(id => delete next[id]);
+          return next;
+        });
+        // Continuar guardando las demás
+      } else {
+        // Si no quiere eliminarlas, no guardar nada
         return;
       }
-      
-      // Filtrar filas con cantidad 0 (no tiene sentido guardar transacciones de 0)
-      const zeroAmountRows = rowsWithAdjustments.filter(r => r.amount === 0);
-      if (zeroAmountRows.length > 0) {
-        const confirmDelete = confirm(`Hay ${zeroAmountRows.length} transacción(es) con cantidad 0. ¿Deseas eliminarlas antes de guardar?`);
-        if (confirmDelete) {
-          const zeroIds = zeroAmountRows.map(r => r.localId);
-          setRows(prev => prev.filter(r => !zeroIds.includes(r.localId)));
-          setQuickAdjustValues(prev => {
-            const next = { ...prev };
-            zeroIds.forEach(id => delete next[id]);
-            return next;
-          });
-          // Continuar guardando las demás
-        } else {
-          // Si no quiere eliminarlas, no guardar nada
-          return;
+    }
+    
+    // Filtrar las filas con cantidad 0 antes de guardar
+    const rowsToSave = rowsWithAdjustments.filter(r => r.amount > 0);
+    if (rowsToSave.length === 0) {
+      toast.error('No hay transacciones válidas para guardar (todas tienen cantidad 0 o menor)');
+      return;
+    }
+
+    // Combinar transacciones duplicadas ANTES de guardar
+    const combinedRows = combineDuplicateTransactions(rowsToSave);
+    
+    console.log('Filas combinadas para guardar:', combinedRows);
+    console.log('Filas nuevas:', combinedRows.filter(r => r.isNew).length);
+    console.log('Filas editadas:', combinedRows.filter(r => r.isEdited && !r.isNew).length);
+
+    const toCreate: CreateTransactionRequest[] = [];
+    const toUpdate: { transactionId: number; payload: CreateTransactionRequest }[] = [];
+
+    for (const r of combinedRows) {
+      const payload = await buildPayloadFromRow(r);
+      if (r.isNew) {
+        toCreate.push(payload);
+      } else if (r.isEdited && r.transactionId) {
+        toUpdate.push({ transactionId: r.transactionId, payload });
+      } else {
+        console.log('Fila saltada (no nueva ni editada):', r);
+      }
+    }
+    
+    console.log('Para crear:', toCreate.length);
+    console.log('Para actualizar:', toUpdate.length);
+
+    const results = {
+      created: 0,
+      createdFailures: [] as { transaction: CreateTransactionRequest; error: any }[],
+      updated: 0,
+      updateFailures: [] as { transactionId: number; transaction: CreateTransactionRequest; error: any }[],
+    };
+
+    try {
+      if (toCreate.length > 0) {
+        const batchResult = await createTransactionsBatch(user.userId, toCreate);
+        results.created = batchResult.successes.length;
+        results.createdFailures = batchResult.failures;
+      }
+
+      for (const u of toUpdate) {
+        const txId = Number(u.transactionId);
+        if (Number.isNaN(txId)) {
+          results.updateFailures.push({ transactionId: u.transactionId, transaction: u.payload, error: 'transactionId inválido' });
+          continue;
+        }
+        try {
+          await updateTransaction(user.userId, txId, u.payload);
+          results.updated += 1;
+        } catch (err) {
+          results.updateFailures.push({ transactionId: txId, transaction: u.payload, error: err });
         }
       }
-      
-      // Filtrar las filas con cantidad 0 antes de guardar
-      const rowsToSave = rowsWithAdjustments.filter(r => r.amount > 0);
-      if (rowsToSave.length === 0) {
-        toast.error('No hay transacciones válidas para guardar (todas tienen cantidad 0 o menor)');
-        return;
+
+      let msg = `${results.created} creadas correctamente. ${results.updated} actualizadas correctamente.`;
+      if (results.createdFailures.length > 0 || results.updateFailures.length > 0) {
+        msg += '\n\nErrores:\n';
+        results.createdFailures.forEach(f => {
+          msg += `Creación fallida: ${JSON.stringify(f.transaction)} -> ${JSON.stringify(f.error)}\n`;
+        });
+        results.updateFailures.forEach(f => {
+          msg += `Update id ${f.transactionId} falló: ${JSON.stringify(f.transaction)} -> ${String(f.error)}\n`;
+        });
+        toast.error(msg);
+      } else {
+        toast.success(msg);
       }
 
-      // Combinar transacciones duplicadas ANTES de guardar
-      const combinedRows = combineDuplicateTransactions(rowsToSave);
-      
-      console.log('Filas combinadas para guardar:', combinedRows);
-      console.log('Filas nuevas:', combinedRows.filter(r => r.isNew).length);
-      console.log('Filas editadas:', combinedRows.filter(r => r.isEdited && !r.isNew).length);
-
-      const toCreate: CreateTransactionRequest[] = [];
-      const toUpdate: { transactionId: number; payload: CreateTransactionRequest }[] = [];
-
-      for (const r of combinedRows) {
-        const payload = await buildPayloadFromRow(r);
-        if (r.isNew) {
-          toCreate.push(payload);
-        } else if (r.isEdited && r.transactionId) {
-          toUpdate.push({ transactionId: r.transactionId, payload });
-        } else {
-          console.log('Fila saltada (no nueva ni editada):', r);
-        }
-      }
-      
-      console.log('Para crear:', toCreate.length);
-      console.log('Para actualizar:', toUpdate.length);
-
-      const results = {
-        created: 0,
-        createdFailures: [] as { transaction: CreateTransactionRequest; error: any }[],
-        updated: 0,
-        updateFailures: [] as { transactionId: number; transaction: CreateTransactionRequest; error: any }[],
-      };
-
-      try {
-        if (toCreate.length > 0) {
-          const batchResult = await createTransactionsBatch(user.userId, toCreate);
-          results.created = batchResult.successes.length;
-          results.createdFailures = batchResult.failures;
-        }
-
-        for (const u of toUpdate) {
-          const txId = Number(u.transactionId);
-          if (Number.isNaN(txId)) {
-            results.updateFailures.push({ transactionId: u.transactionId, transaction: u.payload, error: 'transactionId inválido' });
-            continue;
-          }
-          try {
-            await updateTransaction(user.userId, txId, u.payload);
-            results.updated += 1;
-          } catch (err) {
-            results.updateFailures.push({ transactionId: txId, transaction: u.payload, error: err });
-          }
-        }
-
-        let msg = `${results.created} creadas correctamente. ${results.updated} actualizadas correctamente.`;
-        if (results.createdFailures.length > 0 || results.updateFailures.length > 0) {
-          msg += '\n\nErrores:\n';
-          results.createdFailures.forEach(f => {
-            msg += `Creación fallida: ${JSON.stringify(f.transaction)} -> ${JSON.stringify(f.error)}\n`;
-          });
-          results.updateFailures.forEach(f => {
-            msg += `Update id ${f.transactionId} falló: ${JSON.stringify(f.transaction)} -> ${String(f.error)}\n`;
-          });
-          toast.error(msg);
-        } else {
-          toast.success(msg);
-        }
-
-        setQuickAdjustValues({}); // Limpiar ajustes pendientes
-        fetchTransactions();
+      setQuickAdjustValues({}); // Limpiar ajustes pendientes
+      fetchTransactions();
     } catch (err) {
       console.error('Error guardando transacciones:', err);
       toast.error('Error guardando transacciones');
     }
-  }, [user?.userId, rows, categories, assets, liabilities, quickAdjustValues, fetchTransactions]);
+  };
 
   // loading guard se mueve más abajo para no romper el orden de hooks
 
@@ -866,7 +866,8 @@ const Transactions: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [quickMode, rows, user?.userId, handleSaveAll, exportToCSV]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickMode, rows, user?.userId]);
 
   return (
     <Layout>
