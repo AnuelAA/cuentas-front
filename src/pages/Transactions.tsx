@@ -100,6 +100,12 @@ const Transactions: React.FC = () => {
   const [quickModeCount, setQuickModeCount] = useState(0); // Contador de transacciones añadidas en modo rápido
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'amount' | 'category'; direction: 'asc' | 'desc' } | null>(null); // Ordenamiento
   const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
+  const [searchText, setSearchText] = useState(''); // Búsqueda de texto libre
+  const [searchMinAmount, setSearchMinAmount] = useState<number | null>(null); // Filtro de importe mínimo
+  const [searchMaxAmount, setSearchMaxAmount] = useState<number | null>(null); // Filtro de importe máximo
+  const [searchSelectedCategories, setSearchSelectedCategories] = useState<number[]>([]); // Categorías seleccionadas para filtrar
+  const [searchType, setSearchType] = useState<'all' | 'income' | 'expense'>('all'); // Tipo de transacción
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false); // Mostrar/ocultar panel de búsqueda avanzada
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -928,8 +934,6 @@ const Transactions: React.FC = () => {
 
   // Atajos de teclado - temporalmente deshabilitados para evitar errores de React
   // TODO: Reimplementar de forma más segura usando useRef o eliminando dependencias problemáticas
-
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
 
   return (
     <Layout>
