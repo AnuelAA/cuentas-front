@@ -3,9 +3,10 @@
 Lista de mejoras priorizadas que se implementarán en el frontend, con detalles de implementación para cada una.
 
 **Última actualización**: 
-- ✅ Completadas: Modo rápido de entrada, Exportar CSV, Ordenamiento de transacciones, Exportar gráficos como PNG, Agrupación por categoría padre, Búsqueda avanzada
+- ✅ Completadas: Modo rápido de entrada, Exportar CSV, Ordenamiento de transacciones, Exportar gráficos como PNG, Agrupación por categoría padre, Búsqueda avanzada, Vista de calendario, Análisis de patrones
 - ⚠️ **IMPORTANTE**: Se requiere instalar `html2canvas` en el servidor de producción: `npm install html2canvas`
 - ⚠️ Atajos de teclado temporalmente deshabilitados (problemas con dependencias de React hooks)
+- ⚠️ **NUEVO**: Presupuestos y Plantillas de transacciones - Tipos y funciones API preparadas, pendiente implementación UI cuando backend esté listo (ver BACKEND_REQUIREMENTS_NUEVOS.txt)
 
 ---
 
@@ -220,7 +221,7 @@ npm install html2canvas
 ## 💰 TRANSACCIONES
 
 ### 11. Plantillas de transacciones recurrentes
-**Estado**: Pendiente  
+**Estado**: ⚠️ Preparado (pendiente backend)  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
@@ -233,12 +234,14 @@ npm install html2canvas
 - Editar/eliminar plantillas
 
 **Implementación**:
+- ✅ Tipos TypeScript añadidos (`TransactionTemplate`, `CreateTransactionTemplateRequest`, etc.)
+- ✅ Funciones API implementadas (`getTransactionTemplates`, `createTransactionTemplate`, etc.)
+- ⏳ UI pendiente (se implementará cuando el backend esté listo)
 - Nuevo componente `TransactionTemplates`
 - Modal para crear/editar plantillas
 - Integrar con formulario de transacciones existente
-- Guardar plantillas en backend
 
-**Requiere Backend**: ✅ (ver BACKEND_REQUIREMENTS.txt sección 3)
+**Requiere Backend**: ✅ (ver BACKEND_REQUIREMENTS_NUEVOS.txt sección 2)
 
 ---
 
@@ -293,27 +296,29 @@ npm install html2canvas
 ---
 
 ### 14. Vista de calendario
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Media  
 **Complejidad**: Media
 
 **Qué hacer**:
-- Nueva vista "Calendario" además de "Tabla"
-- Mostrar transacciones en calendario mensual
+- Nueva vista "Calendario" además de "Tabla" ✅
+- Mostrar transacciones en calendario mensual ✅
 - Cada día muestra:
-  - Total de ingresos (verde)
-  - Total de gastos (rojo)
-  - Número de transacciones
-- Click en día: modal con transacciones de ese día
-- Navegación entre meses
-- Resaltar días con más actividad
+  - Total de ingresos (verde) ✅
+  - Total de gastos (rojo) ✅
+  - Número de transacciones ✅
+- Click en día: panel lateral con transacciones de ese día ✅
+- Navegación entre meses ✅
+- Resaltar días con más actividad ✅
 
 **Implementación**:
-- Usar `react-calendar` o componente custom
-- Agrupar transacciones por día
-- Calcular totales diarios
-- Modal `DayTransactionsModal` para detalles
-- Toggle entre vista tabla/calendario
+- ✅ Usar componente `Calendar` de shadcn/ui (basado en `react-day-picker`)
+- ✅ Agrupar transacciones por día con `transactionsByDay` useMemo
+- ✅ Calcular totales diarios (ingresos, gastos, balance)
+- ✅ Panel lateral con detalles del día seleccionado
+- ✅ Toggle entre vista tabla/calendario con botones en header
+- ✅ Indicadores visuales en días con transacciones (puntos verdes/rojos)
+- ✅ Navegación de meses con botones "Mes anterior", "Hoy", "Mes siguiente"
 
 ---
 
@@ -391,34 +396,40 @@ npm install html2canvas
 ---
 
 ### 18. Análisis de patrones
-**Estado**: Pendiente  
+**Estado**: ✅ Realizado  
 **Prioridad**: Media  
 **Complejidad**: Alta
 
 **Qué hacer**:
-- Sección "Insights" en página de Transacciones
+- Sección "Insights" en página de Transacciones ✅
 - Detectar y mostrar patrones:
-  - "Gastas más los fines de semana"
-  - "Tu mayor gasto mensual es en [categoría]"
-  - "Gastas un promedio de X€ en [categoría]"
-  - "Tendencia: tus gastos en [categoría] han aumentado 20%"
-- Gráficos de patrones temporales
-- Alertas de cambios significativos
+  - "Gastas más los fines de semana" ✅
+  - "Tu mayor gasto mensual es en [categoría]" ✅
+  - "Gastas un promedio de X€ en [categoría]" ✅
+  - "Tendencia: tus gastos han aumentado/disminuido X%" ✅
+  - "Gasto inusual detectado" (outliers) ✅
+- Gráficos de patrones temporales (pendiente - se puede añadir después)
+- Alertas de cambios significativos ✅
 
 **Implementación**:
-- Funciones de análisis:
-  - Agrupar por día de semana
-  - Calcular promedios y tendencias
-  - Detectar outliers
-- Componente `PatternAnalysis` con visualizaciones
-- Mostrar insights más relevantes primero
+- ✅ Funciones de análisis implementadas con `useMemo`:
+  - Agrupar por día de semana y calcular promedios
+  - Calcular totales y porcentajes por categoría
+  - Comparar últimos 2 meses para tendencias
+  - Detectar outliers usando método IQR (Interquartile Range)
+- ✅ Componente de insights con cards visuales:
+  - Colores diferenciados por tipo (info/warning/success)
+  - Iconos contextuales (Lightbulb, BarChart3, AlertCircle)
+  - Máximo 5 insights más relevantes
+- ✅ Se muestra solo cuando hay transacciones y se detectan patrones
+- ✅ Integrado con filtros de búsqueda avanzada
 
-**Requiere Backend**: ⚠️ (opcional, para cálculos complejos - ver BACKEND_REQUIREMENTS.txt sección 5)
+**Requiere Backend**: ❌ No requerido (todo calculado en frontend)
 
 ---
 
 ### 19. Alertas de presupuesto
-**Estado**: Pendiente  
+**Estado**: ⚠️ Preparado (pendiente backend)  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
@@ -431,12 +442,15 @@ npm install html2canvas
 - Vista de todos los presupuestos con estado
 
 **Implementación**:
+- ✅ Tipos TypeScript añadidos (`Budget`, `BudgetStatus`, `CreateBudgetRequest`, etc.)
+- ✅ Funciones API implementadas (`getBudgets`, `getBudgetStatus`, `createBudget`, etc.)
+- ⏳ UI pendiente (se implementará cuando el backend esté listo)
 - Componente `BudgetAlert` reutilizable
 - Calcular % usado: `(gastado / presupuesto) * 100`
 - Integrar en lista de categorías y formulario de transacciones
 - Usar colores: verde (<50%), amarillo (50-90%), rojo (>90%)
 
-**Requiere Backend**: ✅ (ver BACKEND_REQUIREMENTS.txt sección 6)
+**Requiere Backend**: ✅ (ver BACKEND_REQUIREMENTS_NUEVOS.txt sección 1)
 
 ---
 

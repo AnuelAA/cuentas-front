@@ -22,6 +22,13 @@ import type {
   CategoryDetail,
   AssetDetail,
   LiabilityDetail,
+  Budget,
+  BudgetStatus,
+  TransactionTemplate,
+  CreateBudgetRequest,
+  UpdateBudgetRequest,
+  CreateTransactionTemplateRequest,
+  UpdateTransactionTemplateRequest,
 } from '@/types/api';
 
 // URL base fija al backend; permite override con VITE_API_URL si se define
@@ -642,6 +649,59 @@ export const getLiabilityDetail = async (
 ): Promise<LiabilityDetail> => {
   const response = await api.get<LiabilityDetail>(`/users/${userId}/liabilities/${liabilityId}/detail`);
   return response.data;
+};
+
+// ========== BUDGETS (PRESUPUESTOS) ==========
+
+export const getBudgets = async (userId: number, startDate?: string, endDate?: string): Promise<Budget[]> => {
+  const params: Record<string, any> = {};
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
+  const response = await api.get<Budget[]>(`/users/${userId}/budgets`, { params });
+  return response.data;
+};
+
+export const getBudgetStatus = async (userId: number, startDate?: string, endDate?: string): Promise<BudgetStatus[]> => {
+  const params: Record<string, any> = {};
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
+  const response = await api.get<BudgetStatus[]>(`/users/${userId}/budgets/status`, { params });
+  return response.data;
+};
+
+export const createBudget = async (userId: number, payload: CreateBudgetRequest): Promise<Budget> => {
+  const response = await api.post<Budget>(`/users/${userId}/budgets`, payload);
+  return response.data;
+};
+
+export const updateBudget = async (userId: number, budgetId: number, payload: UpdateBudgetRequest): Promise<Budget> => {
+  const response = await api.put<Budget>(`/users/${userId}/budgets/${budgetId}`, payload);
+  return response.data;
+};
+
+export const deleteBudget = async (userId: number, budgetId: number): Promise<void> => {
+  await api.delete(`/users/${userId}/budgets/${budgetId}`);
+};
+
+// ========== TRANSACTION TEMPLATES (PLANTILLAS) ==========
+
+export const getTransactionTemplates = async (userId: number): Promise<TransactionTemplate[]> => {
+  const response = await api.get<TransactionTemplate[]>(`/users/${userId}/transaction-templates`);
+  return response.data;
+};
+
+export const createTransactionTemplate = async (userId: number, payload: CreateTransactionTemplateRequest): Promise<TransactionTemplate> => {
+  const response = await api.post<TransactionTemplate>(`/users/${userId}/transaction-templates`, payload);
+  return response.data;
+};
+
+export const updateTransactionTemplate = async (userId: number, templateId: number, payload: UpdateTransactionTemplateRequest): Promise<TransactionTemplate> => {
+  const response = await api.put<TransactionTemplate>(`/users/${userId}/transaction-templates/${templateId}`, payload);
+  return response.data;
+};
+
+export const deleteTransactionTemplate = async (userId: number, templateId: number): Promise<void> => {
+  await api.delete(`/users/${userId}/transaction-templates/${templateId}`);
 };
 
 export default api;

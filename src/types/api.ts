@@ -106,6 +106,88 @@ export interface Category {
   parentCategoryId?: number | null;
   createdAt?: string;
   updatedAt?: string;
+  budget?: number | null; // Presupuesto mensual para la categoría
+}
+
+export interface Budget {
+  budgetId: number;
+  userId: number;
+  categoryId: number;
+  amount: number; // Presupuesto mensual
+  period: 'monthly' | 'yearly'; // Período del presupuesto
+  startDate?: string; // Fecha de inicio (opcional)
+  endDate?: string; // Fecha de fin (opcional)
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BudgetStatus {
+  budgetId: number;
+  categoryId: number;
+  categoryName: string;
+  budgetAmount: number;
+  spentAmount: number;
+  remainingAmount: number;
+  percentageUsed: number; // 0-100
+  isExceeded: boolean;
+  period: 'monthly' | 'yearly';
+  startDate: string;
+  endDate: string;
+}
+
+export interface TransactionTemplate {
+  templateId: number;
+  userId: number;
+  name: string; // Nombre de la plantilla
+  categoryId?: number | null;
+  categoryName?: string | null;
+  type: 'income' | 'expense';
+  amount: number;
+  assetId?: number | null;
+  relatedAssetId?: number | null;
+  liabilityId?: number | null;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateBudgetRequest {
+  categoryId: number;
+  amount: number;
+  period: 'monthly' | 'yearly';
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UpdateBudgetRequest {
+  amount?: number;
+  period?: 'monthly' | 'yearly';
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CreateTransactionTemplateRequest {
+  name: string;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  type: 'income' | 'expense';
+  amount: number;
+  assetId?: number | null;
+  relatedAssetId?: number | null;
+  liabilityId?: number | null;
+  description?: string | null;
+}
+
+export interface UpdateTransactionTemplateRequest {
+  name?: string;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  type?: 'income' | 'expense';
+  amount?: number;
+  assetId?: number | null;
+  relatedAssetId?: number | null;
+  liabilityId?: number | null;
+  description?: string | null;
 }
 
 export interface DashboardMetrics {

@@ -1,0 +1,352 @@
+# 📋 REQUERIMIENTOS DEL BACKEND - NUEVAS FUNCIONALIDADES
+# Joseliyo App - Frontend Requirements
+
+Este documento especifica exactamente qué debe implementar el backend para soportar las nuevas funcionalidades del frontend.
+
+---
+
+## 1. PRESUPUESTOS (BUDGETS)
+
+### 1.1 Modelo de Datos
+
+**Tabla: `budgets`**
+```sql
+CREATE TABLE budgets (
+  budget_id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(user_id),
+  category_id INTEGER NOT NULL REFERENCES categories(category_id),
+  amount DECIMAL(15,2) NOT NULL, -- Presupuesto mensual o anual
+  period VARCHAR(10) NOT NULL CHECK (period IN ('monthly', 'yearly')), -- 'monthly' o 'yearly'
+  start_date DATE, -- Fecha de inicio (opcional, si no se especifica, usar fecha actual)
+  end_date DATE, -- Fecha de fin (opcional, si no se especifica, presupuesto indefinido)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, category_id, period, start_date) -- Un presupuesto único por categoría, período y fecha de inicio
+);
+```
+
+### 1.2 Endpoints Requeridos
+
+#### GET `/api/users/{userId}/budgets`
+Obtener todos los presupuestos de un usuario.
+
+**Query Parameters (opcionales):**
+- `startDate` (string, formato: `YYYY-MM-DD`): Fecha de inicio para filtrar presupuestos activos
+- `endDate` (string, formato: `YYYY-MM-DD`): Fecha de fin para filtrar presupuestos activos
+
+**Response:**
+```json
+[
+  {
+    "budgetId": 1,
+    "userId": 1,
+    "categoryId": 5,
+    "amount": 500.00,
+    "period": "monthly",
+    "startDate": "2024-01-01",
+    "endDate": null,
+    "createdAt": "2024-01-01T10:00:00Z",
+    "updatedAt": "2024-01-01T10:00:00Z"
+  }
+]
+```
+
+#### GET `/api/users/{userId}/budgets/status`
+Obtener el estado de todos los presupuestos (gastado vs presupuestado).
+
+**Query Parameters (opcionales):**
+- `startDate` (string, formato: `YYYY-MM-DD`): Fecha de inicio del período a analizar
+- `endDate` (string, formato: `YYYY-MM-DD`): Fecha de fin del período a analizar
+
+**Lógica:**
+- Si `startDate` y `endDate` no se proporcionan, usar el mes actual
+- Para cada presupuesto:
+  - Si `period = 'monthly'`: calcular gastos del mes actual (o del mes especificado por startDate/endDate)
+  - Si `period = 'yearly'`: calcular gastos del año actual (o del año especificado)
+- Calcular `spentAmount` sumando todas las transacciones de tipo `expense` de esa categoría en el período
+- Calcular `percentageUsed = (spentAmount / budgetAmount) * 100`
+- `isExceeded = spentAmount > budgetAmount`
+
+**Response:**
+```json
+[
+  {
+    "budgetId": 1,
+    "categoryId": 5,
+    "categoryName": "Comida",
+    "budgetAmount": 500.00,
+    "spentAmount": 350.00,
+    "remainingAmount": 150.00,
+    "percentageUsed": 70.0,
+    "isExceeded": false,
+    "period": "monthly",
+    "startDate": "2024-01-01",
+    "endDate": "2024-01-31"
+  }
+]
+```
+
+#### POST `/api/users/{userId}/budgets`
+Crear un nuevo presupuesto.
+
+**Request Body:**
+```json
+{
+  "categoryId": 5,
+  "amount": 500.00,
+  "period": "monthly",
+  "startDate": "2024-01-01", // Opcional
+  "endDate": null // Opcional
+}
+```
+
+**Response:**
+```json
+{
+  "budgetId": 1,
+  "userId": 1,
+  "categoryId": 5,
+  "amount": 500.00,
+  "period": "monthly",
+  "startDate": "2024-01-01",
+  "endDate": null,
+  "createdAt": "2024-01-01T10:00:00Z",
+  "updatedAt": "2024-01-01T10:00:00Z"
+}
+```
+
+**Validaciones:**
+- `amount` debe ser > 0
+- `categoryId` debe existir y pertenecer al usuario
+- `period` debe ser 'monthly' o 'yearly'
+- Si `startDate` no se proporciona, usar la fecha actual
+- Si `endDate` se proporciona, debe ser posterior a `startDate`
+
+#### PUT `/api/users/{userId}/budgets/{budgetId}`
+Actualizar un presupuesto existente.
+
+**Request Body (todos los campos opcionales):**
+```json
+{
+  "amount": 600.00,
+  "period": "monthly",
+  "startDate": "2024-02-01",
+  "endDate": "2024-12-31"
+}
+```
+
+**Response:**
+```json
+{
+  "budgetId": 1,
+  "userId": 1,
+  "categoryId": 5,
+  "amount": 600.00,
+  "period": "monthly",
+  "startDate": "2024-02-01",
+  "endDate": "2024-12-31",
+  "createdAt": "2024-01-01T10:00:00Z",
+  "updatedAt": "2024-02-01T11:00:00Z"
+}
+```
+
+#### DELETE `/api/users/{userId}/budgets/{budgetId}`
+Eliminar un presupuesto.
+
+**Response:** 204 No Content
+
+---
+
+## 2. PLANTILLAS DE TRANSACCIONES (TRANSACTION TEMPLATES)
+
+### 2.1 Modelo de Datos
+
+**Tabla: `transaction_templates`**
+```sql
+CREATE TABLE transaction_templates (
+  template_id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(user_id),
+  name VARCHAR(255) NOT NULL, -- Nombre de la plantilla (ej: "Pago de luz mensual")
+  category_id INTEGER REFERENCES categories(category_id), -- Opcional
+  category_name VARCHAR(255), -- Opcional, para cuando no hay categoryId pero se especifica nombre
+  type VARCHAR(10) NOT NULL CHECK (type IN ('income', 'expense')),
+  amount DECIMAL(15,2) NOT NULL,
+  asset_id INTEGER REFERENCES assets(asset_id), -- Opcional
+  related_asset_id INTEGER REFERENCES assets(asset_id), -- Opcional
+  liability_id INTEGER REFERENCES liabilities(liability_id), -- Opcional
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 2.2 Endpoints Requeridos
+
+#### GET `/api/users/{userId}/transaction-templates`
+Obtener todas las plantillas de transacciones de un usuario.
+
+**Response:**
+```json
+[
+  {
+    "templateId": 1,
+    "userId": 1,
+    "name": "Pago de luz mensual",
+    "categoryId": 5,
+    "categoryName": "Servicios",
+    "type": "expense",
+    "amount": 80.00,
+    "assetId": 2,
+    "relatedAssetId": null,
+    "liabilityId": null,
+    "description": "Factura de electricidad",
+    "createdAt": "2024-01-01T10:00:00Z",
+    "updatedAt": "2024-01-01T10:00:00Z"
+  }
+]
+```
+
+#### POST `/api/users/{userId}/transaction-templates`
+Crear una nueva plantilla.
+
+**Request Body:**
+```json
+{
+  "name": "Pago de luz mensual",
+  "categoryId": 5,
+  "categoryName": null, // Opcional, solo si categoryId no se proporciona
+  "type": "expense",
+  "amount": 80.00,
+  "assetId": 2,
+  "relatedAssetId": null,
+  "liabilityId": null,
+  "description": "Factura de electricidad"
+}
+```
+
+**Validaciones:**
+- `name` es obligatorio y no puede estar vacío
+- `type` debe ser 'income' o 'expense'
+- `amount` debe ser > 0
+- Si `categoryId` no se proporciona pero `categoryName` sí, crear la categoría automáticamente (igual que en createTransaction)
+
+**Response:**
+```json
+{
+  "templateId": 1,
+  "userId": 1,
+  "name": "Pago de luz mensual",
+  "categoryId": 5,
+  "categoryName": "Servicios",
+  "type": "expense",
+  "amount": 80.00,
+  "assetId": 2,
+  "relatedAssetId": null,
+  "liabilityId": null,
+  "description": "Factura de electricidad",
+  "createdAt": "2024-01-01T10:00:00Z",
+  "updatedAt": "2024-01-01T10:00:00Z"
+}
+```
+
+#### PUT `/api/users/{userId}/transaction-templates/{templateId}`
+Actualizar una plantilla existente.
+
+**Request Body (todos los campos opcionales):**
+```json
+{
+  "name": "Pago de luz y agua mensual",
+  "amount": 120.00,
+  "description": "Facturas de servicios"
+}
+```
+
+**Response:**
+```json
+{
+  "templateId": 1,
+  "userId": 1,
+  "name": "Pago de luz y agua mensual",
+  "categoryId": 5,
+  "categoryName": "Servicios",
+  "type": "expense",
+  "amount": 120.00,
+  "assetId": 2,
+  "relatedAssetId": null,
+  "liabilityId": null,
+  "description": "Facturas de servicios",
+  "createdAt": "2024-01-01T10:00:00Z",
+  "updatedAt": "2024-01-15T12:00:00Z"
+}
+```
+
+#### DELETE `/api/users/{userId}/transaction-templates/{templateId}`
+Eliminar una plantilla.
+
+**Response:** 204 No Content
+
+---
+
+## 3. NOTAS IMPORTANTES
+
+### 3.1 Autenticación
+Todos los endpoints requieren autenticación mediante Bearer Token en el header `Authorization`.
+
+### 3.2 Validación de Usuario
+Todos los endpoints deben validar que:
+- El `userId` en la URL corresponde al usuario autenticado
+- Los recursos (categorías, activos, etc.) pertenecen al usuario
+
+### 3.3 Manejo de Errores
+- **400 Bad Request**: Datos inválidos (amount <= 0, period inválido, etc.)
+- **401 Unauthorized**: Token inválido o expirado
+- **403 Forbidden**: Usuario no tiene permiso para acceder al recurso
+- **404 Not Found**: Recurso no encontrado (budgetId, templateId, etc.)
+- **409 Conflict**: Conflicto (ej: presupuesto duplicado para la misma categoría/período)
+
+### 3.4 Formato de Fechas
+- Todas las fechas deben estar en formato ISO 8601: `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ`
+- Para presupuestos mensuales, si no se especifica `startDate`, usar el primer día del mes actual
+- Para presupuestos anuales, si no se especifica `startDate`, usar el primer día del año actual
+
+### 3.5 Cálculo de Gastos en Presupuestos
+- Solo contar transacciones de tipo `expense`
+- Filtrar por `categoryId` exacto (no incluir subcategorías a menos que se especifique)
+- Para presupuestos mensuales: filtrar transacciones del mes especificado (o mes actual)
+- Para presupuestos anuales: filtrar transacciones del año especificado (o año actual)
+
+---
+
+## 4. ORDEN DE IMPLEMENTACIÓN SUGERIDO
+
+1. **Primero: Presupuestos (Budgets)**
+   - Crear tabla `budgets`
+   - Implementar CRUD básico (GET, POST, PUT, DELETE)
+   - Implementar endpoint `/budgets/status` con cálculo de gastos
+
+2. **Segundo: Plantillas de Transacciones**
+   - Crear tabla `transaction_templates`
+   - Implementar CRUD básico (GET, POST, PUT, DELETE)
+
+---
+
+## 5. PREGUNTAS FRECUENTES
+
+**P: ¿Un usuario puede tener múltiples presupuestos para la misma categoría?**
+R: Sí, pero deben tener diferentes períodos o fechas de inicio. La restricción UNIQUE en la tabla previene duplicados exactos.
+
+**P: ¿Qué pasa si una categoría tiene presupuesto mensual y anual al mismo tiempo?**
+R: Ambos se calculan independientemente. El frontend mostrará ambos estados.
+
+**P: ¿Las plantillas pueden tener categoryName sin categoryId?**
+R: Sí, igual que en las transacciones. El backend debe crear la categoría automáticamente si no existe.
+
+**P: ¿Se pueden aplicar plantillas automáticamente en fechas programadas?**
+R: No, eso es una funcionalidad futura. Por ahora, las plantillas solo prellenan el formulario cuando el usuario las selecciona.
+
+---
+
+**Fecha de creación:** 2024-01-XX
+**Versión del frontend:** Compatible con las mejoras de presupuestos y plantillas
+
+

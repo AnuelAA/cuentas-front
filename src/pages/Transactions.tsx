@@ -18,6 +18,7 @@ import {
 import type { Transaction, Category, CreateTransactionRequest, Asset, Liability } from '@/types/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,9 +37,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { format, startOfMonth, endOfMonth, isValid as isValidDate } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear } from 'date-fns';
 import { toast } from 'sonner';
 
 type Row = {
@@ -106,6 +107,9 @@ const Transactions: React.FC = () => {
   const [searchSelectedCategories, setSearchSelectedCategories] = useState<number[]>([]); // Categorías seleccionadas para filtrar
   const [searchType, setSearchType] = useState<'all' | 'income' | 'expense'>('all'); // Tipo de transacción
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false); // Mostrar/ocultar panel de búsqueda avanzada
+  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table'); // Modo de vista: tabla o calendario
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | undefined>(undefined); // Fecha seleccionada en calendario
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date()); // Mes actual del calendario
 
   const findByNameId = (
     list: Array<{ name?: string; [key: string]: any }>,
@@ -730,6 +734,176 @@ const Transactions: React.FC = () => {
   const totalExpenses = expenseRows.reduce((sum, r) => sum + (r.amount || 0), 0);
   const netBalance = totalIncome - totalExpenses;
 
+  // Agrupar transacciones por día para el calendario
+  const transactionsByDay = useMemo(() => {
+    const grouped: Record<string, { income: Row[]; expense: Row[]; totalIncome: number; totalExpense: number }> = {};
+    
+    filteredRows.forEach(row => {
+      const dayKey = format(parseISO(row.transactionDate), 'yyyy-MM-dd');
+      if (!grouped[dayKey]) {
+        grouped[dayKey] = { income: [], expense: [], totalIncome: 0, totalExpense: 0 };
+      }
+      
+      if (row.type === 'income') {
+        grouped[dayKey].income.push(row);
+        grouped[dayKey].totalIncome += row.amount || 0;
+      } else if (row.type === 'expense') {
+        grouped[dayKey].expense.push(row);
+        grouped[dayKey].totalExpense += row.amount || 0;
+      }
+    });
+    
+    return grouped;
+  }, [filteredRows]);
+
+  // Obtener transacciones de un día específico
+  const getDayTransactions = (date: Date) => {
+    const dayKey = format(date, 'yyyy-MM-dd');
+    return transactionsByDay[dayKey] || { income: [], expense: [], totalIncome: 0, totalExpense: 0 };
+  };
+
+  // Análisis de patrones
+  const patternInsights = useMemo(() => {
+    const insights: Array<{ type: 'info' | 'warning' | 'success'; title: string; description: string; value?: string }> = [];
+    
+    if (filteredRows.length === 0) return insights;
+
+    const expenses = filteredRows.filter(r => r.type === 'expense');
+    const incomes = filteredRows.filter(r => r.type === 'income');
+    
+    // 1. Análisis por día de semana
+    const expensesByDayOfWeek: Record<number, { count: number; total: number }> = {};
+    expenses.forEach(exp => {
+      const date = parseISO(exp.transactionDate);
+      const dayOfWeek = getDay(date); // 0 = domingo, 6 = sábado
+      if (!expensesByDayOfWeek[dayOfWeek]) {
+        expensesByDayOfWeek[dayOfWeek] = { count: 0, total: 0 };
+      }
+      expensesByDayOfWeek[dayOfWeek].count++;
+      expensesByDayOfWeek[dayOfWeek].total += exp.amount || 0;
+    });
+
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const avgByDay = Object.entries(expensesByDayOfWeek).map(([day, data]) => ({
+      day: parseInt(day),
+      dayName: dayNames[parseInt(day)],
+      avg: data.total / data.count,
+      total: data.total,
+      count: data.count
+    }));
+
+    if (avgByDay.length > 0) {
+      const maxDay = avgByDay.reduce((max, d) => d.avg > max.avg ? d : max);
+      const minDay = avgByDay.reduce((min, d) => d.avg < min.avg ? d : min);
+      
+      if (maxDay.avg > minDay.avg * 1.2) { // 20% más
+        insights.push({
+          type: 'info',
+          title: 'Gastas más los fines de semana',
+          description: `Tu gasto promedio en ${maxDay.dayName} es ${((maxDay.avg / minDay.avg - 1) * 100).toFixed(0)}% mayor que en ${minDay.dayName}`,
+          value: `${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(maxDay.avg)} vs ${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(minDay.avg)}`
+        });
+      }
+    }
+
+    // 2. Mayor gasto por categoría
+    const expensesByCategory: Record<string, { total: number; count: number; categoryName: string }> = {};
+    expenses.forEach(exp => {
+      const catName = exp.categoryName || categories.find(c => c.categoryId === exp.categoryId)?.name || 'Sin categoría';
+      if (!expensesByCategory[catName]) {
+        expensesByCategory[catName] = { total: 0, count: 0, categoryName: catName };
+      }
+      expensesByCategory[catName].total += exp.amount || 0;
+      expensesByCategory[catName].count++;
+    });
+
+    const categoryTotals = Object.values(expensesByCategory).sort((a, b) => b.total - a.total);
+    if (categoryTotals.length > 0) {
+      const topCategory = categoryTotals[0];
+      const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const percentage = (topCategory.total / totalExpenses) * 100;
+      
+      insights.push({
+        type: 'info',
+        title: 'Tu mayor gasto mensual',
+        description: `${topCategory.categoryName} representa el ${percentage.toFixed(1)}% de tus gastos`,
+        value: new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(topCategory.total)
+      });
+    }
+
+    // 3. Promedio por categoría
+    if (categoryTotals.length > 0) {
+      const avgPerCategory = categoryTotals.map(cat => ({
+        ...cat,
+        avg: cat.total / cat.count
+      })).sort((a, b) => b.avg - a.avg);
+      
+      if (avgPerCategory.length > 0 && avgPerCategory[0].count >= 3) {
+        insights.push({
+          type: 'info',
+          title: 'Gasto promedio por transacción',
+          description: `En ${avgPerCategory[0].categoryName} gastas un promedio de`,
+          value: new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(avgPerCategory[0].avg)
+        });
+      }
+    }
+
+    // 4. Tendencia mensual (comparar últimos 2 meses)
+    const now = new Date();
+    const lastMonth = subMonths(now, 1);
+    const twoMonthsAgo = subMonths(now, 2);
+    
+    const lastMonthExpenses = expenses.filter(exp => {
+      const date = parseISO(exp.transactionDate);
+      return date >= startOfMonth(lastMonth) && date < startOfMonth(now);
+    });
+    
+    const twoMonthsAgoExpenses = expenses.filter(exp => {
+      const date = parseISO(exp.transactionDate);
+      return date >= startOfMonth(twoMonthsAgo) && date < startOfMonth(lastMonth);
+    });
+
+    if (lastMonthExpenses.length > 0 && twoMonthsAgoExpenses.length > 0) {
+      const lastMonthTotal = lastMonthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const twoMonthsAgoTotal = twoMonthsAgoExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const change = ((lastMonthTotal - twoMonthsAgoTotal) / twoMonthsAgoTotal) * 100;
+      
+      if (Math.abs(change) > 10) {
+        insights.push({
+          type: change > 0 ? 'warning' : 'success',
+          title: 'Tendencia de gastos',
+          description: change > 0 
+            ? `Tus gastos han aumentado ${change.toFixed(0)}% respecto al mes anterior`
+            : `Tus gastos han disminuido ${Math.abs(change).toFixed(0)}% respecto al mes anterior`,
+          value: `${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(lastMonthTotal)} vs ${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(twoMonthsAgoTotal)}`
+        });
+      }
+    }
+
+    // 5. Detectar outliers (transacciones muy grandes)
+    if (expenses.length > 0) {
+      const amounts = expenses.map(e => e.amount || 0).sort((a, b) => b - a);
+      const median = amounts[Math.floor(amounts.length / 2)];
+      const q3 = amounts[Math.floor(amounts.length * 0.25)];
+      const iqr = median - q3;
+      const outlierThreshold = median + (1.5 * iqr);
+      
+      const outliers = expenses.filter(e => (e.amount || 0) > outlierThreshold);
+      if (outliers.length > 0 && outliers.length <= 3) {
+        const largest = outliers.sort((a, b) => (b.amount || 0) - (a.amount || 0))[0];
+        const catName = largest.categoryName || categories.find(c => c.categoryId === largest.categoryId)?.name || 'Sin categoría';
+        insights.push({
+          type: 'warning',
+          title: 'Gasto inusual detectado',
+          description: `Transacción de ${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(largest.amount || 0)} en ${catName}`,
+          value: format(parseISO(largest.transactionDate), 'dd/MM/yyyy')
+        });
+      }
+    }
+
+    return insights.slice(0, 5); // Máximo 5 insights
+  }, [filteredRows, categories]);
+
   if (loading) {
     return (
       <Layout>
@@ -969,6 +1143,28 @@ const Transactions: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2">
+                <div className="flex border rounded-md">
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('table')}
+                    className="rounded-r-none"
+                    title="Vista de tabla"
+                  >
+                    <Table2 className="h-4 w-4 mr-1" />
+                    Tabla
+                  </Button>
+                  <Button
+                    variant={viewMode === 'calendar' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('calendar')}
+                    className="rounded-l-none border-l"
+                    title="Vista de calendario"
+                  >
+                    <CalendarDays className="h-4 w-4 mr-1" />
+                    Calendario
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1139,6 +1335,67 @@ const Transactions: React.FC = () => {
             </Card>
           </div>
         </div>
+
+        {/* Análisis de Patrones / Insights */}
+        {patternInsights.length > 0 && (
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-5 w-5 text-primary" />
+                <CardTitle>Insights y Patrones</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {patternInsights.map((insight, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-4 rounded-lg border-2 ${
+                      insight.type === 'warning'
+                        ? 'border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20'
+                        : insight.type === 'success'
+                        ? 'border-green-500/30 bg-green-50 dark:bg-green-950/20'
+                        : 'border-blue-500/30 bg-blue-50 dark:bg-blue-950/20'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 ${
+                        insight.type === 'warning'
+                          ? 'text-yellow-600'
+                          : insight.type === 'success'
+                          ? 'text-green-600'
+                          : 'text-blue-600'
+                      }`}>
+                        {insight.type === 'warning' ? (
+                          <AlertCircle className="h-5 w-5" />
+                        ) : insight.type === 'success' ? (
+                          <TrendingDown className="h-5 w-5" />
+                        ) : (
+                          <BarChart3 className="h-5 w-5" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-sm mb-1">{insight.title}</h4>
+                        <p className="text-xs text-muted-foreground mb-2">{insight.description}</p>
+                        {insight.value && (
+                          <p className={`text-xs font-medium ${
+                            insight.type === 'warning'
+                              ? 'text-yellow-700'
+                              : insight.type === 'success'
+                              ? 'text-green-700'
+                              : 'text-blue-700'
+                          }`}>
+                            {insight.value}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Modo rápido de entrada */}
         {quickMode ? (
@@ -1409,7 +1666,160 @@ const Transactions: React.FC = () => {
         </Card>
         )}
 
+        {/* Vista de Calendario */}
+        {viewMode === 'calendar' && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Vista de Calendario</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                  >
+                    <ArrowUpDown className="h-4 w-4 mr-1 rotate-90" />
+                    Mes anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCalendarMonth(new Date())}
+                  >
+                    Hoy
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                  >
+                    Mes siguiente
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col lg:flex-row gap-6">
+                <div className="flex-1">
+                  <Calendar
+                    mode="single"
+                    month={calendarMonth}
+                    onMonthChange={setCalendarMonth}
+                    selected={selectedCalendarDate}
+                    onSelect={(date) => {
+                      setSelectedCalendarDate(date);
+                    }}
+                    className="rounded-md border"
+                    modifiersClassNames={{
+                      hasTransactions: 'bg-primary/10',
+                      hasIncome: 'bg-green-100',
+                      hasExpense: 'bg-red-100',
+                    }}
+                    modifiers={{
+                      hasTransactions: (date) => {
+                        const dayKey = format(date, 'yyyy-MM-dd');
+                        return !!transactionsByDay[dayKey];
+                      },
+                      hasIncome: (date) => {
+                        const dayKey = format(date, 'yyyy-MM-dd');
+                        return (transactionsByDay[dayKey]?.totalIncome || 0) > 0;
+                      },
+                      hasExpense: (date) => {
+                        const dayKey = format(date, 'yyyy-MM-dd');
+                        return (transactionsByDay[dayKey]?.totalExpense || 0) > 0;
+                      },
+                    }}
+                    classNames={{
+                      day_selected: 'bg-primary text-primary-foreground',
+                    }}
+                  />
+                </div>
+                {selectedCalendarDate && (
+                  <div className="lg:w-80">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">
+                          {format(selectedCalendarDate, 'EEEE, d \'de\' MMMM \'de\' yyyy')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const dayData = getDayTransactions(selectedCalendarDate);
+                          if (dayData.income.length === 0 && dayData.expense.length === 0) {
+                            return <p className="text-sm text-muted-foreground">No hay transacciones este día</p>;
+                          }
+                          return (
+                            <div className="space-y-4">
+                              {dayData.totalIncome > 0 && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-sm font-medium text-green-600">Ingresos</p>
+                                    <p className="text-sm font-bold text-green-600">
+                                      {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(dayData.totalIncome)}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {dayData.income.map((row) => (
+                                      <div key={row.localId} className="flex items-center justify-between text-xs p-2 bg-green-50 rounded">
+                                        <span className="truncate flex-1">
+                                          {row.categoryName || categories.find(c => c.categoryId === row.categoryId)?.name || 'Sin categoría'}
+                                        </span>
+                                        <span className="ml-2 font-medium">
+                                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(row.amount || 0)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {dayData.totalExpense > 0 && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-sm font-medium text-red-600">Gastos</p>
+                                    <p className="text-sm font-bold text-red-600">
+                                      {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(dayData.totalExpense)}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {dayData.expense.map((row) => (
+                                      <div key={row.localId} className="flex items-center justify-between text-xs p-2 bg-red-50 rounded">
+                                        <span className="truncate flex-1">
+                                          {row.categoryName || categories.find(c => c.categoryId === row.categoryId)?.name || 'Sin categoría'}
+                                        </span>
+                                        <span className="ml-2 font-medium">
+                                          {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(row.amount || 0)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="pt-2 border-t">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium">Balance del día</p>
+                                  <p className={`text-sm font-bold ${(dayData.totalIncome - dayData.totalExpense) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {(dayData.totalIncome - dayData.totalExpense) >= 0 ? '+' : ''}
+                                    {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(dayData.totalIncome - dayData.totalExpense)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Sección de Ingresos agrupados por categoría */}
+        {viewMode === 'table' && (
+          <>
+            {/* Sección de Ingresos agrupados por categoría */}
         <Card className="border-success/30 shadow-lg">
           <CardHeader className="bg-gradient-to-r from-success/10 to-success/5 border-b border-success/20">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -2111,7 +2521,8 @@ const Transactions: React.FC = () => {
             )}
           </CardContent>
         </Card>
-
+          </>
+        )}
 
         <datalist id="categories-list">
           {categories.map(c => <option key={c.categoryId} value={c.name} />)}
