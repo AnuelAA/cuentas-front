@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FolderOpen, FolderPlus, Edit2, Trash2, Plus, ChevronDown, ChevronRight, Eye, DollarSign, AlertCircle, TrendingUp } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 
