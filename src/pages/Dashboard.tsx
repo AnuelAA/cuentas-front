@@ -16,7 +16,7 @@ import { Layout } from '@/components/Layout';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, LineChart as LineChartIcon, Euro, AlertCircle, CheckCircle2, Download, GitCompare } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import {
   ResponsiveContainer,
@@ -73,6 +73,15 @@ const Dashboard: React.FC = () => {
   const [selectedLiabilityKeys, setSelectedLiabilityKeys] = useState<Record<string, boolean>>({});
   const [groupByParent, setGroupByParent] = useState(false); // Toggle para agrupar por categoría padre
   const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({}); // Controlar visibilidad de series en gráficos
+  
+  // Vista de comparación
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [period2Start, setPeriod2Start] = useState<string>('');
+  const [period2End, setPeriod2End] = useState<string>('');
+  const [metrics2, setMetrics2] = useState<DashboardMetrics | null>(null);
+  const [transactions2, setTransactions2] = useState<any[]>([]);
+  const [assets2, setAssets2] = useState<Asset[]>([]);
+  const [liabilities2, setLiabilities2] = useState<Liability[]>([]);
 
   // --- Helpers de rango (UI) ---
   const setYearRange = (offset: number) => {
@@ -207,11 +216,43 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Función para obtener datos del segundo período
+  const fetchPeriod2Data = async () => {
+    if (!user?.userId || !period2Start || !period2End) return;
+    try {
+      const [
+        metricsData2,
+        assetsData2,
+        liabilitiesData2,
+        txsData2
+      ] = await Promise.all([
+        getDashboard(user.userId, period2Start, period2End),
+        getAssets(user.userId),
+        getLiabilities(user.userId),
+        getTransactions(user.userId, period2Start, period2End)
+      ]);
+      setMetrics2(metricsData2);
+      setAssets2(assetsData2);
+      setLiabilities2(liabilitiesData2);
+      setTransactions2(txsData2);
+    } catch (error) {
+      console.error('Error fetching period 2 data:', error);
+    }
+  };
+
   // Ejecutar fetch cuando cambian user / fechas
   useEffect(() => {
     fetchDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, startDate, endDate]);
+
+  // Ejecutar fetch del segundo período cuando está activo el modo comparación
+  useEffect(() => {
+    if (comparisonMode && period2Start && period2End) {
+      fetchPeriod2Data();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, period2Start, period2End, comparisonMode]);
 
   // Cuadre de caja en el rango visible: compara (startDate - 1 día) con endDate
   const cashReconciliationRange = useMemo(() => {
@@ -359,6 +400,28 @@ const Dashboard: React.FC = () => {
     return (transactions || []).filter(t => String(t.type ?? '').toLowerCase() === 'expense')
       .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
   }, [metrics, transactions]);
+
+  // Totales del período 2 (para comparación)
+  const incomeTotal2 = useMemo(() => {
+    if (!comparisonMode || !metrics2) return 0;
+    if (metrics2.totalIncome != null) return metrics2.totalIncome;
+    return (transactions2 || []).filter(t => String(t.type ?? '').toLowerCase() === 'income')
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  }, [comparisonMode, metrics2, transactions2]);
+
+  const expenseTotal2 = useMemo(() => {
+    if (!comparisonMode || !metrics2) return 0;
+    if (metrics2.totalExpenses != null) return metrics2.totalExpenses;
+    return (transactions2 || []).filter(t => String(t.type ?? '').toLowerCase() === 'expense')
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+  }, [comparisonMode, metrics2, transactions2]);
+
+  // Helper para calcular diferencia y porcentaje
+  const calculateDifference = (current: number, previous: number) => {
+    const diff = current - previous;
+    const percent = previous !== 0 ? ((diff / previous) * 100) : (current > 0 ? 100 : 0);
+    return { diff, percent, isPositive: diff >= 0 };
+  };
 
   // --- Cálculo de tendencias (comparación con período anterior) ---
   const [previousPeriodData, setPreviousPeriodData] = useState<{
@@ -905,6 +968,51 @@ const Dashboard: React.FC = () => {
               <Button onClick={fetchDashboard} size="sm" className="w-full sm:w-auto">Actualizar</Button>
             </div>
 
+            {/* Toggle de comparación */}
+            <div className="flex flex-col gap-2">
+              <Button
+                variant={comparisonMode ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  const newMode = !comparisonMode;
+                  setComparisonMode(newMode);
+                  if (newMode && !period2Start && !period2End) {
+                    // Inicializar segundo período al mes anterior por defecto
+                    const today = new Date();
+                    const lastMonth = subMonths(today, 1);
+                    setPeriod2Start(format(startOfMonth(lastMonth), 'yyyy-MM-dd'));
+                    setPeriod2End(format(endOfMonth(lastMonth), 'yyyy-MM-dd'));
+                  }
+                }}
+                className="w-full sm:w-auto"
+              >
+                <GitCompare className="h-4 w-4 mr-1" />
+                Comparar períodos
+              </Button>
+              {comparisonMode && (
+                <div className="flex items-center gap-2 flex-wrap p-2 bg-muted/50 rounded-md">
+                  <span className="text-xs text-muted-foreground">Período 2:</span>
+                  <input 
+                    type="date" 
+                    value={period2Start} 
+                    onChange={(e) => {
+                      setPeriod2Start(e.target.value);
+                    }} 
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs w-full sm:w-auto" 
+                  />
+                  <span className="text-xs text-muted-foreground">-</span>
+                  <input 
+                    type="date" 
+                    value={period2End} 
+                    onChange={(e) => {
+                      setPeriod2End(e.target.value);
+                    }} 
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs w-full sm:w-auto" 
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Filtros rápidos predefinidos */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground hidden sm:inline">Rápido:</span>
@@ -981,70 +1089,191 @@ const Dashboard: React.FC = () => {
         {/* Resumen Ejecutivo */}
         <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20 shadow-lg">
           <CardHeader>
-            <CardTitle className="text-xl sm:text-2xl">Resumen Ejecutivo</CardTitle>
+            <CardTitle className="text-xl sm:text-2xl">
+              {comparisonMode ? 'Comparación de Períodos' : 'Resumen Ejecutivo'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Patrimonio Neto</p>
-                <p className="text-2xl font-bold">
-                  {formatCurrency(
-                    (assets.reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0)) -
-                    (liabilities.reduce((sum, l) => {
-                      const latest = (l.liabilityValues || []).sort((a: any, b: any) => 
-                        new Date(b.valuationDate).getTime() - new Date(a.valuationDate).getTime()
-                      )[0];
-                      return sum + (Number(latest?.outstandingBalance || l.outstandingBalance || 0));
-                    }, 0))
+            {comparisonMode && metrics2 ? (
+              // Vista de comparación
+              <div className="space-y-6">
+                {/* Ingresos */}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Ingresos</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 1</p>
+                      <p className="text-xl font-bold text-green-600">{formatCurrency(incomeTotal)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 2</p>
+                      <p className="text-xl font-bold text-green-600">{formatCurrency(incomeTotal2)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {period2Start && period2End ? `${format(parseISO(period2Start), 'dd/MM/yyyy')} - ${format(parseISO(period2End), 'dd/MM/yyyy')}` : '-'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Diferencia</p>
+                      {(() => {
+                        const diff = calculateDifference(incomeTotal, incomeTotal2);
+                        return (
+                          <>
+                            <p className={`text-xl font-bold ${diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {diff.isPositive ? '+' : ''}{formatCurrency(diff.diff)}
+                            </p>
+                            <p className={`text-xs flex items-center gap-1 ${diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {diff.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                              {diff.isPositive ? '+' : ''}{diff.percent.toFixed(1)}%
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                {/* Gastos */}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Gastos</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 1</p>
+                      <p className="text-xl font-bold text-red-600">{formatCurrency(expenseTotal)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 2</p>
+                      <p className="text-xl font-bold text-red-600">{formatCurrency(expenseTotal2)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {period2Start && period2End ? `${format(parseISO(period2Start), 'dd/MM/yyyy')} - ${format(parseISO(period2End), 'dd/MM/yyyy')}` : '-'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Diferencia</p>
+                      {(() => {
+                        const diff = calculateDifference(expenseTotal, expenseTotal2);
+                        // Para gastos, negativo es bueno (disminuye)
+                        return (
+                          <>
+                            <p className={`text-xl font-bold ${!diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {diff.isPositive ? '+' : ''}{formatCurrency(diff.diff)}
+                            </p>
+                            <p className={`text-xs flex items-center gap-1 ${!diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {!diff.isPositive ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                              {diff.isPositive ? '+' : ''}{diff.percent.toFixed(1)}%
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                {/* Balance */}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Balance</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 1</p>
+                      <p className={`text-xl font-bold ${(incomeTotal - expenseTotal) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {(incomeTotal - expenseTotal) >= 0 ? '+' : ''}{formatCurrency(incomeTotal - expenseTotal)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Período 2</p>
+                      <p className={`text-xl font-bold ${(incomeTotal2 - expenseTotal2) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {(incomeTotal2 - expenseTotal2) >= 0 ? '+' : ''}{formatCurrency(incomeTotal2 - expenseTotal2)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Diferencia</p>
+                      {(() => {
+                        const balance1 = incomeTotal - expenseTotal;
+                        const balance2 = incomeTotal2 - expenseTotal2;
+                        const diff = calculateDifference(balance1, balance2);
+                        return (
+                          <>
+                            <p className={`text-xl font-bold ${diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {diff.isPositive ? '+' : ''}{formatCurrency(diff.diff)}
+                            </p>
+                            <p className={`text-xs flex items-center gap-1 ${diff.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                              {diff.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                              {diff.isPositive ? '+' : ''}{diff.percent.toFixed(1)}%
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Vista normal
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Patrimonio Neto</p>
+                  <p className="text-2xl font-bold">
+                    {formatCurrency(
+                      (assets.reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0)) -
+                      (liabilities.reduce((sum, l) => {
+                        const latest = (l.liabilityValues || []).sort((a: any, b: any) => 
+                          new Date(b.valuationDate).getTime() - new Date(a.valuationDate).getTime()
+                        )[0];
+                        return sum + (Number(latest?.outstandingBalance || l.outstandingBalance || 0));
+                      }, 0))
+                    )}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Ingresos</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {formatCurrency(incomeTotal)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
+                  </p>
+                  {incomeTrend && (
+                    <p className={`text-xs flex items-center gap-1 ${incomeTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      {incomeTrend.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                      {incomeTrend.isPositive ? '+' : ''}{incomeTrend.value}% vs período anterior
+                    </p>
                   )}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Ingresos</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {formatCurrency(incomeTotal)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
-                </p>
-                {incomeTrend && (
-                  <p className={`text-xs flex items-center gap-1 ${incomeTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {incomeTrend.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {incomeTrend.isPositive ? '+' : ''}{incomeTrend.value}% vs período anterior
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Gastos</p>
+                  <p className="text-2xl font-bold text-red-600">
+                    {formatCurrency(expenseTotal)}
                   </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Gastos</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {formatCurrency(expenseTotal)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
-                </p>
-                {expenseTrend && (
-                  <p className={`text-xs flex items-center gap-1 ${expenseTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {expenseTrend.isPositive ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
-                    {expenseTrend.isPositive ? '-' : '+'}{Math.abs(expenseTrend.value)}% vs período anterior
+                  <p className="text-xs text-muted-foreground">
+                    {format(parseISO(startDate), 'dd/MM/yyyy')} - {format(parseISO(endDate), 'dd/MM/yyyy')}
                   </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Resultado</p>
-                <p className={`text-2xl font-bold ${(incomeTotal - expenseTotal) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(incomeTotal - expenseTotal) >= 0 ? '+' : ''}{formatCurrency(incomeTotal - expenseTotal)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {incomeTotal > 0 ? `Ahorro: ${Math.round(((incomeTotal - expenseTotal) / incomeTotal) * 100)}%` : 'Sin ingresos'}
-                </p>
-                {balanceTrend && (
-                  <p className={`text-xs flex items-center gap-1 ${balanceTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {balanceTrend.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {balanceTrend.isPositive ? '+' : ''}{balanceTrend.value}% vs período anterior
+                  {expenseTrend && (
+                    <p className={`text-xs flex items-center gap-1 ${expenseTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      {expenseTrend.isPositive ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                      {expenseTrend.isPositive ? '-' : '+'}{Math.abs(expenseTrend.value)}% vs período anterior
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Resultado</p>
+                  <p className={`text-2xl font-bold ${(incomeTotal - expenseTotal) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {(incomeTotal - expenseTotal) >= 0 ? '+' : ''}{formatCurrency(incomeTotal - expenseTotal)}
                   </p>
-                )}
+                  <p className="text-xs text-muted-foreground">
+                    {incomeTotal > 0 ? `Ahorro: ${Math.round(((incomeTotal - expenseTotal) / incomeTotal) * 100)}%` : 'Sin ingresos'}
+                  </p>
+                  {balanceTrend && (
+                    <p className={`text-xs flex items-center gap-1 ${balanceTrend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      {balanceTrend.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                      {balanceTrend.isPositive ? '+' : ''}{balanceTrend.value}% vs período anterior
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
