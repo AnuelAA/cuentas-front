@@ -42,7 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle, FileText, Copy, Table2, CalendarDays } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle, FileText, Copy, Table2, CalendarDays, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear, getDay, subMonths } from 'date-fns';
 import {
@@ -52,6 +52,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 
 type Row = {
@@ -2757,6 +2767,266 @@ const Transactions: React.FC = () => {
         </Card>
           </>
         )}
+
+        {/* Template Management Dialog */}
+        <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingTemplate ? 'Editar Plantilla' : 'Gestionar Plantillas'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {editingTemplate === null ? (
+                // Lista de plantillas
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm text-muted-foreground">
+                      {templates.length} {templates.length === 1 ? 'plantilla guardada' : 'plantillas guardadas'}
+                    </p>
+                    <Button
+                      onClick={() => handleOpenTemplateDialog()}
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nueva Plantilla
+                    </Button>
+                  </div>
+                  {templates.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>No hay plantillas guardadas</p>
+                      <p className="text-xs mt-1">Crea una plantilla para reutilizar transacciones frecuentes</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {templates.map((template) => (
+                        <Card key={template.templateId} className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-semibold">{template.name}</h4>
+                                <Badge variant={template.type === 'income' ? 'default' : 'secondary'}>
+                                  {template.type === 'income' ? 'Ingreso' : 'Gasto'}
+                                </Badge>
+                              </div>
+                              <div className="text-sm text-muted-foreground space-y-1">
+                                {template.categoryName && (
+                                  <p>Categoría: {template.categoryName}</p>
+                                )}
+                                <p>Importe: {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(template.amount)}</p>
+                                {template.description && (
+                                  <p className="text-xs">{template.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleApplyTemplate(template)}
+                                title="Aplicar plantilla"
+                              >
+                                <Copy className="h-3 w-3 mr-1" />
+                                Aplicar
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenTemplateDialog(template)}
+                                title="Editar plantilla"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setTemplateToDelete(template);
+                                  setDeleteTemplateDialogOpen(true);
+                                }}
+                                className="text-destructive hover:text-destructive"
+                                title="Eliminar plantilla"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Formulario de crear/editar plantilla
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="template-name">Nombre de la plantilla *</Label>
+                    <Input
+                      id="template-name"
+                      value={templateForm.name}
+                      onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                      placeholder="Ej: Compra supermercado"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="template-type">Tipo *</Label>
+                      <Select
+                        value={templateForm.type}
+                        onValueChange={(value: 'income' | 'expense') => setTemplateForm({ ...templateForm, type: value })}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="income">Ingreso</SelectItem>
+                          <SelectItem value="expense">Gasto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="template-amount">Importe *</Label>
+                      <Input
+                        id="template-amount"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={templateForm.amount}
+                        onChange={(e) => setTemplateForm({ ...templateForm, amount: e.target.value })}
+                        placeholder="0.00"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="template-category">Categoría</Label>
+                    <Input
+                      id="template-category"
+                      list="categories-list"
+                      value={templateForm.categoryName || ''}
+                      onChange={(e) => {
+                        const categoryName = e.target.value;
+                        const category = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+                        setTemplateForm({
+                          ...templateForm,
+                          categoryName,
+                          categoryId: category?.categoryId || null,
+                        });
+                      }}
+                      placeholder="Nombre de categoría"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="template-asset">Activo</Label>
+                      <Select
+                        value={templateForm.assetId?.toString() || ''}
+                        onValueChange={(value) => setTemplateForm({ ...templateForm, assetId: value ? parseInt(value) : null })}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Seleccionar activo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Ninguno</SelectItem>
+                          {assets.map(a => (
+                            <SelectItem key={a.assetId} value={a.assetId.toString()}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="template-liability">Pasivo</Label>
+                      <Select
+                        value={templateForm.liabilityId?.toString() || ''}
+                        onValueChange={(value) => setTemplateForm({ ...templateForm, liabilityId: value ? parseInt(value) : null })}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Seleccionar pasivo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Ninguno</SelectItem>
+                          {liabilities.map(l => (
+                            <SelectItem key={l.liabilityId} value={l.liabilityId.toString()}>
+                              {l.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="template-description">Descripción</Label>
+                    <Input
+                      id="template-description"
+                      value={templateForm.description || ''}
+                      onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
+                      placeholder="Descripción opcional"
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              {editingTemplate === null ? (
+                <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>
+                  Cerrar
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setTemplateDialogOpen(false);
+                      setEditingTemplate(null);
+                      setTemplateForm({
+                        name: '',
+                        categoryId: null,
+                        categoryName: '',
+                        type: 'expense',
+                        amount: '',
+                        assetId: primaryAssetId,
+                        liabilityId: null,
+                        description: '',
+                      });
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleSaveTemplate}>
+                    {editingTemplate ? 'Actualizar' : 'Crear'}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Template Confirmation Dialog */}
+        <AlertDialog open={deleteTemplateDialogOpen} onOpenChange={setDeleteTemplateDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar plantilla?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción eliminará la plantilla "{templateToDelete?.name}".
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setTemplateToDelete(null)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteTemplate} className="bg-destructive hover:bg-destructive/90">
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <datalist id="categories-list">
           {categories.map(c => <option key={c.categoryId} value={c.name} />)}
