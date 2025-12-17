@@ -45,6 +45,7 @@ import {
 import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle, FileText, Copy, Table2, CalendarDays, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear, getDay, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
   Dialog,
   DialogContent,
@@ -1945,6 +1946,7 @@ const Transactions: React.FC = () => {
                     onSelect={(date) => {
                       setSelectedCalendarDate(date);
                     }}
+                    locale={es}
                     className="rounded-md border"
                     modifiersClassNames={{
                       hasTransactions: 'bg-primary/10',
@@ -1975,7 +1977,7 @@ const Transactions: React.FC = () => {
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-lg">
-                          {format(selectedCalendarDate, 'EEEE, d \'de\' MMMM \'de\' yyyy')}
+                          {format(selectedCalendarDate, 'EEEE, d \'de\' MMMM \'de\' yyyy', { locale: es })}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
