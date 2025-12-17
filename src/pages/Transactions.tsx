@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/table';
 import { ArrowDownCircle, ArrowUpCircle, Plus, Trash2, Save, Calendar, TrendingUp, TrendingDown, DollarSign, Calculator, Edit2, Check, X, ExternalLink, Zap, Download, ArrowUpDown, Search, Filter, Lightbulb, BarChart3, AlertCircle, FileText, Copy, Table2, CalendarDays } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear, getDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isValid as isValidDate, startOfDay, isSameDay, parseISO, eachDayOfInterval, getMonth, getYear, getDay, subMonths } from 'date-fns';
 import {
   Dialog,
   DialogContent,
