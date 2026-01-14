@@ -324,7 +324,9 @@ const Transactions: React.FC = () => {
       return;
     }
     
-    const numValue = parseFloat(value);
+    // Convert any comma to dot for parsing (accepts both formats)
+    const normalizedValue = value.replace(',', '.');
+    const numValue = parseFloat(normalizedValue);
     if (!isNaN(numValue)) {
       updateRow(localId, { amount: numValue });
     }

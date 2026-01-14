@@ -66,6 +66,7 @@ const Assets: React.FC = () => {
     const [valuationsModalOpen, setValuationsModalOpen] = useState(false);
     const [selectedAssetForValuations, setSelectedAssetForValuations] = useState<Asset | null>(null);
     const [editingValuation, setEditingValuation] = useState<{ assetValueId: number; valuationDate: string; currentValue: number; acquisitionValue?: number } | null>(null);
+    const [editingValuationInputs, setEditingValuationInputs] = useState<{ currentValue: string; acquisitionValue: string } | null>(null);
     const [deleteValuationDialogOpen, setDeleteValuationDialogOpen] = useState(false);
     const [valuationToDelete, setValuationToDelete] = useState<{ assetId: number; assetValueId: number } | null>(null);
     const [newAssetValuationDate, setNewAssetValuationDate] = useState<string>(formatDate(selectedMonth, 'yyyy-MM-01'));
@@ -198,21 +199,28 @@ const Assets: React.FC = () => {
       setAssetModalOpen(true);
     };
 
-    // Helper function to handle decimal input (commas work, points reset)
+    // Helper function to handle decimal input (accepts both commas and dots)
     const handleDecimalInput = (value: string, setter: (val: number) => void) => {
-      // Replace comma with dot for internal processing
-      const normalized = value.replace(',', '.');
-      // If it contains a point (not comma), reset to 0
-      if (normalized.includes('.') && !value.includes(',')) {
+      // Allow empty string
+      if (value === '') {
         setter(0);
         return;
       }
-      // Parse the value (with comma converted to dot)
-      const numValue = parseFloat(normalized);
-      if (!isNaN(numValue)) {
-        setter(numValue);
-      } else if (value === '' || value === '0') {
-        setter(0);
+      // Convert any dot to comma for consistency
+      const normalizedValue = value.replace(/\./g, ',');
+      // Check if it's a valid number format: digits, optionally one comma, then more digits
+      if (/^[\d]*[,]?[\d]*$/.test(normalizedValue)) {
+        // Ensure only one comma
+        const parts = normalizedValue.split(',');
+        if (parts.length <= 2) {
+          // Parse the value (with comma converted to dot)
+          const numValue = parseFloat(normalizedValue.replace(',', '.'));
+          if (!isNaN(numValue)) {
+            setter(numValue);
+          } else if (value === '0') {
+            setter(0);
+          }
+        }
       }
     };
 
@@ -314,18 +322,39 @@ const Assets: React.FC = () => {
 
     const handleEditValuation = (valuation: { assetValueId: number; valuationDate: string; currentValue: number; acquisitionValue?: number }) => {
       setEditingValuation(valuation);
+      setEditingValuationInputs({
+        currentValue: String(valuation.currentValue).replace('.', ','),
+        acquisitionValue: valuation.acquisitionValue ? String(valuation.acquisitionValue).replace('.', ',') : '',
+      });
     };
 
     const handleSaveValuation = async () => {
-      if (!user?.userId || !editingValuation || !selectedAssetForValuations) return;
+      if (!user?.userId || !editingValuation || !selectedAssetForValuations || !editingValuationInputs) return;
       try {
+        // Parse the input values, allowing both comma and dot as decimal separator
+        const currentValueStr = editingValuationInputs.currentValue.replace(',', '.');
+        const currentValue = parseFloat(currentValueStr);
+        if (isNaN(currentValue)) {
+          toast.error('El valor actual debe ser un número válido');
+          return;
+        }
+        
+        const acquisitionValue = editingValuationInputs.acquisitionValue 
+          ? parseFloat(editingValuationInputs.acquisitionValue.replace(',', '.'))
+          : undefined;
+        if (editingValuationInputs.acquisitionValue && (isNaN(acquisitionValue!) || acquisitionValue === undefined)) {
+          toast.error('El valor de adquisición debe ser un número válido');
+          return;
+        }
+
         await updateAssetValuation(user.userId, selectedAssetForValuations.assetId, editingValuation.assetValueId, {
           valuationDate: editingValuation.valuationDate,
-          currentValue: editingValuation.currentValue,
-          acquisitionValue: editingValuation.acquisitionValue,
+          currentValue: currentValue,
+          acquisitionValue: acquisitionValue,
         });
         toast.success('Valoración actualizada correctamente');
         setEditingValuation(null);
+        setEditingValuationInputs(null);
         fetchAssets();
         // Refresh the selected asset
         const updatedAssets = await getAssets(user.userId);
@@ -728,15 +757,32 @@ const Assets: React.FC = () => {
                             value={assetValuations[asset.assetId]?.currentValue || ''}
                             onChange={(e) => {
                               const value = e.target.value;
-                              // Only allow numbers, commas, and empty string
-                              if (value === '' || /^[\d,]+$/.test(value)) {
+                              // Allow empty string
+                              if (value === '') {
                                 setAssetValuations(prev => ({
                                   ...prev,
                                   [asset.assetId]: {
                                     ...prev[asset.assetId],
-                                    currentValue: value,
+                                    currentValue: '',
                                   }
                                 }));
+                                return;
+                              }
+                              // Convert any dot to comma for consistency
+                              const normalizedValue = value.replace(/\./g, ',');
+                              // Check if it's a valid number format: digits, optionally one comma, then more digits
+                              if (/^[\d]*[,]?[\d]*$/.test(normalizedValue)) {
+                                // Ensure only one comma
+                                const parts = normalizedValue.split(',');
+                                if (parts.length <= 2) {
+                                  setAssetValuations(prev => ({
+                                    ...prev,
+                                    [asset.assetId]: {
+                                      ...prev[asset.assetId],
+                                      currentValue: normalizedValue,
+                                    }
+                                  }));
+                                }
                               }
                             }}
                           />
@@ -749,15 +795,32 @@ const Assets: React.FC = () => {
                             value={assetValuations[asset.assetId]?.acquisitionValue || ''}
                             onChange={(e) => {
                               const value = e.target.value;
-                              // Only allow numbers, commas, and empty string
-                              if (value === '' || /^[\d,]+$/.test(value)) {
+                              // Allow empty string
+                              if (value === '') {
                                 setAssetValuations(prev => ({
                                   ...prev,
                                   [asset.assetId]: {
                                     ...prev[asset.assetId],
-                                    acquisitionValue: value,
+                                    acquisitionValue: '',
                                   }
                                 }));
+                                return;
+                              }
+                              // Convert any dot to comma for consistency
+                              const normalizedValue = value.replace(/\./g, ',');
+                              // Check if it's a valid number format: digits, optionally one comma, then more digits
+                              if (/^[\d]*[,]?[\d]*$/.test(normalizedValue)) {
+                                // Ensure only one comma
+                                const parts = normalizedValue.split(',');
+                                if (parts.length <= 2) {
+                                  setAssetValuations(prev => ({
+                                    ...prev,
+                                    [asset.assetId]: {
+                                      ...prev[asset.assetId],
+                                      acquisitionValue: normalizedValue,
+                                    }
+                                  }));
+                                }
                               }
                             }}
                           />
@@ -907,7 +970,13 @@ const Assets: React.FC = () => {
             )}
           </DialogContent>
         </Dialog>
-        <Dialog open={valuationsModalOpen} onOpenChange={setValuationsModalOpen}>
+        <Dialog open={valuationsModalOpen} onOpenChange={(open) => {
+          setValuationsModalOpen(open);
+          if (!open) {
+            setEditingValuation(null);
+            setEditingValuationInputs(null);
+          }
+        }}>
           <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Valoraciones de {selectedAssetForValuations?.name}</DialogTitle>
@@ -948,15 +1017,28 @@ const Assets: React.FC = () => {
                                   {isEditing ? (
                                     <Input
                                       type="text"
-                                      value={String(editingValuation.currentValue).replace('.', ',')}
+                                      value={editingValuationInputs?.currentValue || ''}
                                       onChange={(e) => {
-                                        const value = e.target.value.replace(',', '.');
-                                        const numValue = parseFloat(value);
-                                        if (!isNaN(numValue)) {
-                                          setEditingValuation({ ...editingValuation, currentValue: numValue });
+                                        const value = e.target.value;
+                                        // Allow empty string
+                                        if (value === '') {
+                                          setEditingValuationInputs(prev => prev ? { ...prev, currentValue: '' } : null);
+                                          return;
+                                        }
+                                        // Convert any dot to comma for consistency
+                                        const normalizedValue = value.replace(/\./g, ',');
+                                        // Check if it's a valid number format: digits, optionally one comma, then more digits
+                                        // Allow: "123", "123,", "123,45", ",45" (for cases like ",5")
+                                        if (/^[\d]*[,]?[\d]*$/.test(normalizedValue)) {
+                                          // Ensure only one comma
+                                          const parts = normalizedValue.split(',');
+                                          if (parts.length <= 2) {
+                                            setEditingValuationInputs(prev => prev ? { ...prev, currentValue: normalizedValue } : null);
+                                          }
                                         }
                                       }}
                                       className="h-8 text-right"
+                                      placeholder="0,00"
                                     />
                                   ) : (
                                     formatCurrency(valuation.currentValue)
@@ -966,15 +1048,28 @@ const Assets: React.FC = () => {
                                   {isEditing ? (
                                     <Input
                                       type="text"
-                                      value={editingValuation.acquisitionValue ? String(editingValuation.acquisitionValue).replace('.', ',') : ''}
+                                      value={editingValuationInputs?.acquisitionValue || ''}
                                       onChange={(e) => {
-                                        const value = e.target.value.replace(',', '.');
-                                        const numValue = parseFloat(value);
-                                        if (!isNaN(numValue) || value === '') {
-                                          setEditingValuation({ ...editingValuation, acquisitionValue: value === '' ? undefined : numValue });
+                                        const value = e.target.value;
+                                        // Allow empty string
+                                        if (value === '') {
+                                          setEditingValuationInputs(prev => prev ? { ...prev, acquisitionValue: '' } : null);
+                                          return;
+                                        }
+                                        // Convert any dot to comma for consistency
+                                        const normalizedValue = value.replace(/\./g, ',');
+                                        // Check if it's a valid number format: digits, optionally one comma, then more digits
+                                        // Allow: "123", "123,", "123,45", ",45" (for cases like ",5")
+                                        if (/^[\d]*[,]?[\d]*$/.test(normalizedValue)) {
+                                          // Ensure only one comma
+                                          const parts = normalizedValue.split(',');
+                                          if (parts.length <= 2) {
+                                            setEditingValuationInputs(prev => prev ? { ...prev, acquisitionValue: normalizedValue } : null);
+                                          }
                                         }
                                       }}
                                       className="h-8 text-right"
+                                      placeholder="0,00"
                                     />
                                   ) : (
                                     valuation.acquisitionValue ? formatCurrency(valuation.acquisitionValue) : '—'
@@ -994,7 +1089,10 @@ const Assets: React.FC = () => {
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => setEditingValuation(null)}
+                                        onClick={() => {
+                                          setEditingValuation(null);
+                                          setEditingValuationInputs(null);
+                                        }}
                                         className="h-7 px-2 text-destructive hover:bg-destructive/10"
                                       >
                                         <X className="h-3 w-3" />

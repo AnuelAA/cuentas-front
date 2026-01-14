@@ -195,30 +195,26 @@ npm install html2canvas
 ---
 
 ### 10. Vista de comparación
-**Estado**: ✅ Realizado  
+**Estado**: Pendiente  
 **Prioridad**: Alta  
 **Complejidad**: Media
 
 **Qué hacer**:
-- Seleccionar dos períodos para comparar ✅
+- Seleccionar dos períodos para comparar
 - Mostrar lado a lado:
-  - Período 1 vs Período 2 ✅
-  - Diferencia absoluta y porcentual ✅
-  - Gráficos comparativos (barras lado a lado) ⏳ (pendiente - se puede añadir después)
-- Aplicar a: Ingresos, Gastos, por Categoría, Activos ✅ (Ingresos y Gastos implementados)
-- Toggle para alternar entre vista normal y comparación ✅
+  - Período 1 vs Período 2
+  - Diferencia absoluta y porcentual
+  - Gráficos comparativos (barras lado a lado)
+- Aplicar a: Ingresos, Gastos, por Categoría, Activos
+- Toggle para alternar entre vista normal y comparación
 
 **Implementación**:
-- ✅ Estados para `period1Start/End` y `period2Start/End` añadidos
-- ✅ Toggle de comparación en el header del Dashboard
-- ✅ Selectores de fecha para el segundo período
-- ✅ Función `fetchPeriod2Data` para obtener datos del segundo período
-- ✅ Funciones helper `calculateDifference` para calcular diferencias absolutas y porcentuales
-- ✅ Resumen Ejecutivo modificado para mostrar comparaciones lado a lado cuando el modo comparación está activo
-- ✅ Visualización de diferencias con iconos de tendencia y colores (verde/rojo)
-- ⏳ Pendiente: Gráficos comparativos lado a lado (se puede añadir después)
+- Estados para `period1Start/End` y `period2Start/End`
+- Componente `ComparisonView` nuevo
+- Reutilizar componentes de gráficos con datos de ambos períodos
+- Calcular diferencias y mostrar en cards destacadas
 
-**Requiere Backend**: ❌ No requerido (todo calculado en frontend)
+**Requiere Backend**: ⚠️ (opcional, para optimización - ver BACKEND_REQUIREMENTS.txt sección 2)
 
 ---
 
@@ -915,7 +911,7 @@ npm install html2canvas
 3. ✅ Indicadores de tendencia
 4. ✅ Resumen ejecutivo (mejorado con fechas del período)
 5. ✅ Gráfico de evolución de patrimonio neto
-6. ✅ Vista de comparación
+6. Vista de comparación
 7. Plantillas de transacciones recurrentes
 8. ✅ Modo rápido de entrada (botón funcional, atajos temporalmente deshabilitados)
 9. ✅ Búsqueda avanzada (texto, tipo, importes, categorías)
