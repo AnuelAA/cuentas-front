@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { importExcel, exportExcel } from '@/services/api';
+import { importExcel, exportExcel, exportDatabase } from '@/services/api';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, Download, FileSpreadsheet, Calendar, X } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Calendar, X, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ExcelImportExport: React.FC = () => {
@@ -15,6 +15,7 @@ const ExcelImportExport: React.FC = () => {
   const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingDatabase, setExportingDatabase] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +54,29 @@ const ExcelImportExport: React.FC = () => {
       toast.error('Error al exportar el fichero');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportDatabase = async () => {
+    if (!user?.userId) { toast.error('Usuario no autenticado'); return; }
+    setExportingDatabase(true);
+    try {
+      const { blob, filename } = await exportDatabase(user.userId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Base de datos exportada correctamente');
+    } catch (err: any) {
+      console.error('Error exportando base de datos:', err);
+      const errorMessage = err?.message || 'Error al exportar la base de datos';
+      toast.error(errorMessage);
+    } finally {
+      setExportingDatabase(false);
     }
   };
 
@@ -233,6 +257,51 @@ const ExcelImportExport: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Card de Exportar Base de Datos */}
+        <Card className="border-purple-100 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-50/50 border-b border-purple-100">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-purple-500 flex items-center justify-center">
+                <Database className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl text-purple-900">Exportar Base de Datos</CardTitle>
+                <p className="text-sm text-purple-700/70 mt-0.5">Descarga un archivo .txt con todo el DDL y los datos</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-6">
+              <div className="pt-2">
+                <Button 
+                  onClick={handleExportDatabase} 
+                  disabled={exportingDatabase}
+                  className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-md"
+                >
+                  {exportingDatabase ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Exportando base de datos...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="mr-2 h-4 w-4" />
+                      Descargar Exportación de Base de Datos
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground">
+                  Descarga un archivo .txt con todo el DDL (CREATE TABLE statements) y todos los INSERTs de tu base de datos filtrados por tu usuario. 
+                  El archivo puede ser grande si tienes muchos datos, por lo que la descarga puede tardar unos momentos.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

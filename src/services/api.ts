@@ -459,6 +459,35 @@ export const exportExcel = async (
 
   return { blob: response.data as Blob, filename };
 };
+
+export const exportDatabase = async (
+  userId: number
+): Promise<{ blob: Blob; filename: string }> => {
+  const response = await api.get(`/users/${userId}/excel/exportDatabase`, {
+    responseType: 'blob',
+    timeout: 120000, // 2 minutos para archivos grandes
+    withCredentials: true,
+  });
+
+  // Si no hay contenido (204), lanzar error
+  if (response.status === 204) {
+    throw new Error('No hay datos para exportar');
+  }
+
+  if (!response.data) {
+    throw new Error('Error al exportar la base de datos');
+  }
+
+  // Extraer nombre del archivo del header Content-Disposition
+  const cd = response.headers['content-disposition'] || response.headers['Content-Disposition'] || '';
+  let filename = 'database-export.txt';
+  const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^;"']+)/i);
+  if (m && m[1]) {
+    filename = decodeURIComponent(m[1].replace(/["']/g, ''));
+  }
+
+  return { blob: response.data as Blob, filename };
+};
 // ----- Assets: crear/actualizar/valuación (stubs) -----
 export const createAsset = async (
   userId: number,
