@@ -478,13 +478,12 @@ export const exportDatabase = async (
     throw new Error('Error al exportar la base de datos');
   }
 
-  // Extraer nombre del archivo del header Content-Disposition
-  const cd = response.headers['content-disposition'] || response.headers['Content-Disposition'] || '';
-  let filename = 'database-export.txt';
-  const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^;"']+)/i);
-  if (m && m[1]) {
-    filename = decodeURIComponent(m[1].replace(/["']/g, ''));
-  }
+  // Generar nombre del archivo con formato YYMMDD-database-export.txt
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2); // Últimos 2 dígitos del año
+  const month = String(now.getMonth() + 1).padStart(2, '0'); // Mes con 2 dígitos
+  const day = String(now.getDate()).padStart(2, '0'); // Día con 2 dígitos
+  const filename = `${year}${month}${day}-database-export.txt`;
 
   return { blob: response.data as Blob, filename };
 };
